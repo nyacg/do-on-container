@@ -1,0 +1,30 @@
+{
+  "name": "do-pool-spike",
+  "main": "index.js",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "containers": [
+    { "class_name": "PoolNode", "image": "../Dockerfile", "instance_type": "standard-1", "max_instances": 3 },
+    { "class_name": "PoolLite", "image": "../Dockerfile", "instance_type": "lite", "max_instances": 3 },
+    { "class_name": "PoolBasic", "image": "../Dockerfile", "instance_type": "basic", "max_instances": 3 },
+    { "class_name": "PoolS2", "image": "../Dockerfile", "instance_type": "standard-2", "max_instances": 3 },
+    { "class_name": "PoolS4", "image": "../Dockerfile", "instance_type": "standard-4", "max_instances": 2 },
+    { "class_name": "CelldBasic", "image": "../../bench/celld/Dockerfile", "instance_type": "basic", "max_instances": 2 },
+    { "class_name": "CelldS2", "image": "../../bench/celld/Dockerfile", "instance_type": "standard-2", "max_instances": 2 }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "POOL", "class_name": "PoolNode" },
+      { "name": "ROOM", "class_name": "Room" },
+      { "name": "STATS", "class_name": "Stats" },
+      { "name": "POOL_LITE", "class_name": "PoolLite" },
+      { "name": "POOL_BASIC", "class_name": "PoolBasic" },
+      { "name": "POOL_S2", "class_name": "PoolS2" },
+      { "name": "POOL_S4", "class_name": "PoolS4" },
+      { "name": "CELLD_BASIC", "class_name": "CelldBasic" },
+      { "name": "CELLD_S2", "class_name": "CelldS2" }
+    ]
+  },
+  "migrations": [ { "tag": "v1", "new_sqlite_classes": ["PoolNode", "Room"] }, { "tag": "v2", "new_sqlite_classes": ["Stats"] }, { "tag": "v3", "new_sqlite_classes": ["PoolLite", "PoolBasic", "PoolS2", "PoolS4"] }, { "tag": "v4", "new_sqlite_classes": ["CelldBasic", "CelldS2"] } ]
+}

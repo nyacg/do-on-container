@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · Durable Objects bin-packed into Cloudflare Containers</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+<h1>do-pool</h1>
+<p class="sub">The same Durable Object classes, running either as real Durable Objects or bin-packed by the hundred into
+workerd inside Cloudflare Containers. Open a demo in two tabs, then flip the backend.</p>
+<div class="demos">
+  <a href="/cursors.html?backend=pool"><b>Live cursors · pool</b><span>20 Hz batched presence, click to stamp (persisted)</span></a>
+  <a href="/cursors.html?backend=do"><b>Live cursors · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
+  <a href="/editor.html?backend=pool"><b>Collaborative editor · pool</b><span>Yjs + CodeMirror over y-websocket</span></a>
+  <a href="/editor.html?backend=do"><b>Collaborative editor · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
+  <a href="/cost.html"><b>What it costs</b><span>1,000 objects: real DOs vs the pool, by awake time</span></a>
+</div>
+<h2>Pool</h2>
+<p class="sub" id="summary"></p>
+<table><thead><tr><th>node</th><th>where</th><th>status</th><th>load</th><th>conns</th><th>cpu</th><th>mem</th><th>live DOs</th><th>assigned</th><th>checkpoints</th><th>seen</th></tr></thead>
+<tbody id="nodes"></tbody></table>
+<h2>Events</h2><ul id="events"></ul>
+</main><script type="module" src="/js/dashboard.js"></script></body></html>

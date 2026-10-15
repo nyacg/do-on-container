@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · cost of 1000 Durable Objects by awake time</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --surface-1: #fcfcfb; --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --grid: #e7e6e2; --axis: #c9c8c2;
+  --series-pool: #2a78d6; --series-do: #eb6834;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --grid: #2c2c2a; --axis: #45443f;
+    --series-pool: #3987e5; --series-do: #d95926;
+  }
+}
+body { margin: 0; }
+.viz-root { background: var(--surface-1); color: var(--text-primary); font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; padding: 28px 32px; max-width: 860px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 14px; }
+.legend { display: flex; gap: 18px; color: var(--text-secondary); font-size: 13px; margin-bottom: 6px; }
+.legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
+svg text { fill: var(--text-secondary); font-size: 12px; }
+svg .lbl { fill: var(--text-primary); font-weight: 600; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--axis); border-radius: 6px; padding: 6px 9px; font-size: 12px; color: var(--text-primary); box-shadow: 0 2px 8px rgb(0 0 0 / .08); display: none; white-space: nowrap; }
+.tip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.note { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+details { margin-top: 10px; color: var(--text-secondary); font-size: 13px; }
+table { border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+td, th { padding: 3px 12px 3px 0; text-align: right; } th { color: var(--text-muted); font-weight: 500; }
+</style></head>
+<body><div class="viz-root" id="root">
+<h1>1,000 Durable Objects: monthly cost by how long they're awake</h1>
+<p class="sub">Real DOs bill wall-clock time at 128 MB each. The pool bills a container plus the CPU it actually uses.</p>
+<div class="legend"><span><i style="background:var(--series-do)"></i>Real Durable Objects</span><span><i style="background:var(--series-pool)"></i>do-pool (workerd in Containers)</span></div>
+<div style="position:relative"><svg id="chart" width="800" height="400" role="img" aria-label="Line chart of monthly cost versus awake fraction"></svg><div class="tip" id="tip"></div></div>
+<p class="note">List prices, Workers Paid, free allowances ignored. Pool capacity measured: one basic container (¼ vCPU, 1 GiB) runs 1,000 awake 1 Hz objects at ~0.2 billed vCPU. Break-even ≈ 0.3% awake (~2 h/month).</p>
+<details><summary>Table</summary><table id="tbl"></table></details>
+</div>
+<script>
+const data = [[0.001,4.05,12.63],[0.0025,10.13,12.63],[0.005,20.25,12.63],[0.01,40.5,12.63],[0.025,101.25,12.63],[0.05,202.5,12.63],[0.1,405,13.15],[0.25,1012.5,14.7],[0.5,2025,17.3],[1,4050,22.48]];
+const W = 800, H = 400, m = { l: 64, r: 150, t: 12, b: 44 };
+const x0 = Math.log10(0.001), x1 = 0, y0 = 0, y1 = Math.log10(10000);
+const X = (f) => m.l + ((Math.log10(f) - x0) / (x1 - x0)) * (W - m.l - m.r);
+const Y = (v) => H - m.b - ((Math.log10(v) - y0) / (y1 - y0)) * (H - m.t - m.b);
+const svg = document.getElementById("chart");
+const ns = "http://www.w3.org/2000/svg";
+const el = (n, a, p = svg) => { const e = document.createElementNS(ns, n); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
+const money = (v) => v >= 100 ? "$" + Math.round(v).toLocaleString() : "$" + v.toFixed(2);
+const pct = (f) => (f * 100 < 1 ? (f * 100).toFixed(1) : Math.round(f * 100)) + "%";
+for (const v of [1, 10, 100, 1000, 10000]) {
+  el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: "var(--grid)", "stroke-width": 1 });
+  el("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end" }).textContent = "$" + v.toLocaleString();
+}
+for (const f of [0.001, 0.01, 0.1, 1]) {
+  el("text", { x: X(f), y: H - m.b + 18, "text-anchor": "middle" }).textContent = pct(f);
+}
+el("text", { x: (m.l + W - m.r) / 2, y: H - 6, "text-anchor": "middle" }).textContent = "share of the month each object is awake (log)";
+el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: "var(--axis)", "stroke-width": 1 });
+const series = [
+  { key: 1, name: "Real DOs", color: "var(--series-do)" },
+  { key: 2, name: "do-pool", color: "var(--series-pool)" },
+];
+for (const s of series) {
+  el("path", { d: data.map((d, i) => (i ? "L" : "M") + X(d[0]) + "," + Y(d[s.key])).join(""), fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  const last = data[data.length - 1];
+  el("circle", { cx: X(last[0]), cy: Y(last[s.key]), r: 4, fill: s.color, stroke: "var(--surface-1)", "stroke-width": 2 });
+  const t = el("text", { x: X(last[0]) + 10, y: Y(last[s.key]) + 4, class: "lbl" });
+  t.textContent = `${s.name} ${money(last[s.key])}`;
+}
+// hover: crosshair + tooltip at nearest sample
+const cross = el("line", { y1: m.t, y2: H - m.b, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" });
+const dots = series.map((s) => el("circle", { r: 4, fill: s.color, stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }));
+const tip = document.getElementById("tip");
+const hit = el("rect", { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: "transparent" });
+hit.addEventListener("pointermove", (e) => {
+  const r = svg.getBoundingClientRect();
+  const px = e.clientX - r.left;
+  const d = data.reduce((b, d) => (Math.abs(X(d[0]) - px) < Math.abs(X(b[0]) - px) ? d : b));
+  cross.setAttribute("x1", X(d[0])); cross.setAttribute("x2", X(d[0])); cross.setAttribute("visibility", "visible");
+  series.forEach((s, i) => { dots[i].setAttribute("cx", X(d[0])); dots[i].setAttribute("cy", Y(d[s.key])); dots[i].setAttribute("visibility", "visible"); });
+  tip.innerHTML = `<b>${pct(d[0])} awake</b> (${(d[0] * 720).toFixed(1)} h/mo)<br>` + series.map((s) => `<i style="background:${s.color}"></i>${s.name}: ${money(d[s.key])}`).join("<br>");
+  tip.style.display = "block";
+  tip.style.left = Math.min(X(d[0]) + 12, W - 190) + "px";
+  tip.style.top = "20px";
+});
+hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); dots.forEach((d) => d.setAttribute("visibility", "hidden")); });
+document.getElementById("tbl").innerHTML = "<tr><th>awake</th><th>real DOs</th><th>do-pool</th></tr>" + data.map((d) => `<tr><td>${pct(d[0])}</td><td>${money(d[1])}</td><td>${money(d[2])}</td></tr>`).join("");
+</script></body></html>

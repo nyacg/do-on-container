@@ -1,0 +1,10 @@
+Node.js v22.14.0
+{"room":"mig-mv8s09bt","path":["node-25","error 500","node-25","error 500"],"sent":58,"acked":58,"persisted":-1,"lostAcked":59,"reconnects":43,"reconnectGapsMs":[705]}
+Node.js v22.14.0
+{"room":"mig-mv8si3z3","path":["node-28","node-27","node-28","node-27","node-28"],"sent":147,"acked":147,"persisted":124,"lostAcked":23,"reconnects":4,"reconnectGapsMs":[1808,631]}
+{"room":"mig-mv8siwdy","path":["node-28","node-27","node-28","node-27","node-28"],"sent":151,"acked":150,"persisted":123,"lostAcked":27,"reconnects":4,"reconnectGapsMs":[1043,630]}
+{"room":"mig-mv8soea5","path":["node-28","node-27","node-28","node-27","node-28"],"sent":141,"acked":140,"persisted":111,"lostAcked":29,"reconnects":8,"reconnectGapsMs":[1150,1021,639,765]}
+{"room":"mig-mv8sp6n2","path":["node-28","node-27","node-28","node-27","node-28"],"sent":142,"acked":142,"persisted":112,"lostAcked":30,"reconnects":6,"reconnectGapsMs":[923,1244,483,776]}
+{"room":"mig-mv8spyol","path":["node-28","node-27","node-28","node-27","node-28"],"sent":145,"acked":144,"persisted":115,"lostAcked":29,"reconnects":8,"reconnectGapsMs":[951,929,928,713]}
+{"room":"mig-mv8swlt5","path":["node-28","node-27","node-28","node-27","node-28"],"sent":142,"acked":142,"persisted":142,"lostAcked":0,"reconnects":8,"reconnectGapsMs":[932,1008,931,924]}
+{"room":"mig-mv8sxe4u","path":["node-28","node-27","node-28","node-27","node-28"],"sent":147,"acked":146,"persisted":146,"lostAcked":0,"reconnects":5,"reconnectGapsMs":[581,884,1230,713]}
