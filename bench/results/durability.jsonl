@@ -1,0 +1,2 @@
+{"mode":"sigterm","room":"dur-sigterm-mv8qs9l2","from":"node-16","clientCloseCode":1012,"unavailableMs":4795,"stampsWritten":10,"stampsSurvived":10,"note":"5 stamps written after last periodic flush; drain-on-SIGTERM saved them"}
+{"mode":"sigkill","room":"dur-sigkill-mv8qtqak","from":"node-17","to":"node-17","clientCloseCode":1006,"unavailableMs":7217,"stampsWritten":10,"stampsSurvived":5,"note":"5 unflushed stamps lost: RPO = flush interval (30s)"}

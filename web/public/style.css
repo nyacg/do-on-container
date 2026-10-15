@@ -1,0 +1,28 @@
+:root { --fg: #111; --muted: #666; --bg: #fafafa; --line: #e5e5e5; --do: #f38020; --pool: #2563eb; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); }
+a { color: inherit; }
+#bar { display: flex; gap: 16px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #fff; flex-wrap: wrap; }
+#bar > a:first-child { font-weight: 700; text-decoration: none; }
+#bar > a:last-child { margin-left: auto; }
+.pill { padding: 2px 10px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 12px; }
+.pill.do { background: var(--do); } .pill.pool { background: var(--pool); }
+#board { position: relative; height: calc(100vh - 50px); overflow: hidden; cursor: crosshair; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 24px 24px; }
+.cursor { position: absolute; left: 0; top: 0; transition: transform 60ms linear; pointer-events: none; }
+.stamp { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; opacity: .75; pointer-events: none; }
+#count { position: absolute; right: 16px; bottom: 12px; color: var(--muted); }
+#editor { height: calc(100vh - 50px); background: #fff; }
+#editor .cm-editor { height: 100%; } #editor .cm-scroller { font: 14px/1.6 ui-monospace, monospace; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+h1 { margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 24px; }
+.demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 32px; }
+.demos a { display: block; padding: 14px 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; text-decoration: none; }
+.demos a b { display: block; } .demos a span { color: var(--muted); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+tr.stopped td { color: #aaa; } tr.draining td { color: #b45309; }
+.meter { display: inline-block; width: 80px; height: 8px; background: #eee; border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.meter div { height: 100%; background: var(--pool); }
+#events { list-style: none; padding: 0; font-size: 13px; } #events li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+#events time { color: var(--muted); margin-right: 6px; } #events span { color: var(--muted); }

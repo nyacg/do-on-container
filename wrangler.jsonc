@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "do-pool",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "web/public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/do/*", "/pool/*"]
+  },
+  "containers": [
+    {
+      "class_name": "PoolNode",
+      "image": "./container/Dockerfile",
+      // basic = 1/4 vCPU, 1 GiB, 4 GB disk. Containers cap at 4096 inbound connections,
+      // so small instances bin-pack WebSockets better than big ones.
+      "instance_type": "basic",
+      "max_instances": 8
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CURSORS", "class_name": "CursorRoom" },
+      { "name": "DOC", "class_name": "YDoc" },
+      { "name": "TICKER", "class_name": "Ticker" },
+      { "name": "POOL", "class_name": "PoolNode" },
+      { "name": "PLACEMENT", "class_name": "Placement" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CursorRoom", "YDoc", "PoolNode", "Placement"] },
+    { "tag": "v2", "new_sqlite_classes": ["Ticker"] }
+  ],
+  "version_metadata": { "binding": "VERSION" },
+  "r2_buckets": [{ "binding": "CHECKPOINTS", "bucket_name": "do-pool-checkpoints" }],
+  "vars": {
+    "POOL_MIN_NODES": "1",
+    "POOL_MAX_NODES": "6",
+    "POOL_MAX_CONNS": "3500",
+    "POOL_CKPT_INTERVAL": "30"
+  }
+}
