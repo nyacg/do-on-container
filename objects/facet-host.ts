@@ -48,7 +48,7 @@ export class FacetHost extends PortableDurableObject<FacetEnv> {
       if (current) await this.closeFacet(1012, "code updated");
       this.ctx.storage.kv.put("codeId", codeId);
     }
-    return (await this.facet()).fetch(req);
+    return (await this.facet()).fetch(appRequest(req));
   }
 
   // ---- control surface for the facet (via the FacetCtl entrypoint, scoped to a code id) ----
@@ -144,6 +144,18 @@ export class FacetHost extends PortableDurableObject<FacetEnv> {
       env: { __HOST: (this.ctx.exports as any).FacetCtl({ props: { codeId } }) },
     };
   }
+}
+
+/**
+ * Apps see their own paths: `/{do|pool}/{app|sapp}/<appId>:<name>/inc` arrives as `/inc`.
+ * (Requests that don't carry that prefix are passed through unchanged.)
+ */
+function appRequest(req: Request): Request {
+  const url = new URL(req.url);
+  const parts = url.pathname.split("/");
+  if (parts.length < 4 || (parts[2] !== "app" && parts[2] !== "sapp")) return req;
+  url.pathname = "/" + parts.slice(4).join("/");
+  return new Request(url, req);
 }
 
 /** Facet → its host root (alarms, dirty pings), scoped to one code id via props. */

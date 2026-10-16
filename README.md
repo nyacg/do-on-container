@@ -23,7 +23,8 @@ and a Yjs editor), each with a backend switch, plus a pool dashboard.
 > - a sandboxed process per tenant app for untrusted code
 >
 > An API parity suite runs the same assertions against real DOs, pooled DOs, real facets and pooled
-> facets. Preview: https://do-pool-v2.do-pool-lab.workers.dev.
+> facets. Preview: https://do-pool-v2.do-pool-lab.workers.dev. Try the dynamic-app
+> [examples](examples/README.md) in the [playground](https://do-pool-v2.do-pool-lab.workers.dev/apps.html).
 
 | Capability | Real DO | do-pool v1 | do-pool v2 |
 |---|---|---|---|

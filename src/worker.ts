@@ -130,6 +130,19 @@ async function api(req: Request, env: Env & { ADMIN_TOKEN?: string }, path: stri
   const placement = env.PLACEMENT.getByName("global");
   const url = new URL(req.url);
   if (path[0] === "status") return Response.json(await placement.status());
+  // Published apps (facets / dynamic workers): list, and read a version's source.
+  if (path[0] === "apps" && req.method === "GET") {
+    if (path[1] && path[2] === "source") {
+      const codeId = url.searchParams.get("code") ?? (await appCode(env, path[1]));
+      const obj = codeId ? await env.CHECKPOINTS.get(`code/${codeId}.js`) : null;
+      return obj ? new Response(obj.body, { headers: { "content-type": "text/javascript; charset=utf-8", "x-code-id": codeId! } }) : new Response("not found", { status: 404 });
+    }
+    const listed = await env.CHECKPOINTS.list({ prefix: "apps/" });
+    const apps = await Promise.all(
+      listed.objects.map(async (o) => ({ appId: o.key.slice(5), codeId: await appCode(env, o.key.slice(5)), updated: o.uploaded })),
+    );
+    return Response.json(apps);
+  }
   if (path[0] === "node" && /^node-\d+$/.test(path[1] ?? "") && req.method === "GET") {
     const node = env.POOL.getByName(path[1]);
     return Response.json(path[2] === "info" ? await node.info() : await node.nodeStats());

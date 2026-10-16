@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · dynamic apps (facets)</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<div id="bar"><a href="/">do-pool</a><span class="pill pool">dynamic apps</span>
+  <span>Durable Object classes loaded at runtime (Worker Loader) and run as facets: on Cloudflare, in the pool, or in a per-app sandbox.</span></div>
+<main class="apps">
+  <div class="controls">
+    <label>app <select id="app"></select></label>
+    <label>backend <select id="backend">
+      <option value="do/app">real DO facet (Dynamic Workers)</option>
+      <option value="pool/app" selected>pooled facet</option>
+      <option value="pool/sapp">sandboxed tenant process</option>
+    </select></label>
+    <label>object <input id="obj" value="demo" size="12"></label>
+    <span id="target" class="muted"></span>
+  </div>
+  <div class="cols">
+    <section>
+      <h3>Try it</h3>
+      <div id="presets" class="presets"></div>
+      <form id="req" class="req">
+        <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+        <input id="path" value="/" size="28"><input id="body" placeholder="body" size="14"><button>send</button>
+      </form>
+      <pre id="res" class="out">…</pre>
+      <h3>WebSocket</h3>
+      <form id="wsform" class="req"><input id="wspath" value="/ws?name=you" size="22"><button id="wsbtn">connect</button>
+        <input id="wsmsg" placeholder="message" size="16"><button id="wssend" type="button" disabled>send</button></form>
+      <pre id="wslog" class="out small"></pre>
+    </section>
+    <section>
+      <h3>Source <span id="codeid" class="muted"></span></h3>
+      <textarea id="src" spellcheck="false"></textarea>
+      <div class="req"><input id="token" type="password" placeholder="admin token" size="18">
+        <button id="publish">publish new version</button><span id="pubres" class="muted"></span></div>
+      <p class="muted small">Publishing swaps the code of every running object of this app on its next request:
+        data is kept, open WebSockets are closed with 1012 and reconnect to the new code.</p>
+    </section>
+  </div>
+</main>
+<script type="module" src="/js/apps.js"></script></body></html>

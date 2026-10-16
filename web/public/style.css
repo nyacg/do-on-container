@@ -26,3 +26,17 @@ tr.stopped td { color: #aaa; } tr.draining td { color: #b45309; }
 .meter div { height: 100%; background: var(--pool); }
 #events { list-style: none; padding: 0; font-size: 13px; } #events li { padding: 3px 0; border-bottom: 1px dashed var(--line); }
 #events time { color: var(--muted); margin-right: 6px; } #events span { color: var(--muted); }
+main.apps { max-width: 1200px; }
+.controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.controls label { display: flex; gap: 6px; align-items: center; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.presets button, .req button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+.presets button:hover, .req button:hover { border-color: var(--pool); }
+.req { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.req input, .req select, .controls select, .controls input { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; }
+.out { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 80px; max-height: 260px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+.out.small { min-height: 60px; }
+#src { width: 100%; height: 440px; font: 12px/1.5 ui-monospace, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 10px; tab-size: 2; }
+.muted { color: var(--muted); } .small { font-size: 12px; }
