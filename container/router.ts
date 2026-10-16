@@ -7,7 +7,7 @@
 import { CLASSES, isClassSlug, poolKey, poolRegistry, type ClassSlug } from "../objects";
 import { writeSegment } from "../objects/ckpt-store";
 import type { PoolEnv } from "../objects/portable";
-import { appOfKey, byTenant, fanOut, fromTenantKey, tenantFetcher, tenants, toTenantKey, type TenantEnv } from "./tenants";
+import { appOfKey, byTenant, fanOut, fromTenantKey, tenantFetch, tenantFetcher, tenants, toTenantKey, type TenantEnv } from "./tenants";
 
 export { TenantBridge } from "./tenants";
 
@@ -250,7 +250,7 @@ async function admin(url: URL, req: Request, env: Env): Promise<Response> {
       const app = url.searchParams.get("app") ?? "";
       await tenantFetcher(env, app); // ensure it has a slot
       const slot = tenants().find((t) => t.app === app)!.slot;
-      await env.SPAWNQ.fetch(`http://q/${slot}`, { method: "PUT", body: `probe:${app}` });
+      await env.SPAWNQ.fetch(`http://q/${slot}`, { method: "PUT", body: `probe:${app}` }); // (no nonce)
       for (let t = 0; t < 15_000; t += 100) {
         const r = await env.SLOTS.fetch(`http://s/${slot}/probe.txt`);
         if (r.ok) {
@@ -291,7 +291,7 @@ export default {
       // Sandboxed app: hand the request to the app's own process, where it's a plain FacetHost.
       const headers = new Headers(req.headers);
       headers.set("x-do-class", "app");
-      return (await tenantFetcher(env, appOfKey(key))).fetch(new Request(req, { headers }));
+      return tenantFetch(env, appOfKey(key), new Request(req, { headers }));
     }
     if (req.headers.get("x-do-fresh") === "1") poolRegistry.fresh.add(key);
     poolRegistry.epochs.set(key, epoch);

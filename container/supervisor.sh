@@ -9,6 +9,9 @@ CKPT_INTERVAL=${CKPT_INTERVAL:-30}
 NODE_NAME=${NODE_NAME:-local}
 export NODE_NAME
 ulimit -n 65536 2>/dev/null || true
+# Runtime state never survives a restart — but a filesystem snapshot (sleep/wake) or a reused
+# disk would bring back stale sockets and markers: start clean.
+rm -rf /run/spawnq /run/bridges /run/slots
 mkdir -p /stats /data /data/tenants /run/spawnq /run/bridges
 for i in $(seq 0 31); do mkdir -p /run/slots/$i; done
 

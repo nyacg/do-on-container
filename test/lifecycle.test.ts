@@ -316,3 +316,26 @@ run("sandbox-isolation", async () => {
   assert.match(probe, /bridge other tenant: .* 403/, "bridge refuses other tenants' checkpoints");
   assert.match(probe, /bridge stats\/drain: 403/, "bridge refuses control endpoints");
 });
+
+run("sandbox-sleep-wake", async () => {
+  // Regression: a filesystem snapshot restores the old /run (stale sockets, ready markers) and
+  // tenant data owned by a previous slot's uid. Sandboxed apps must work after a wake.
+  const chat = `${BASE}/pool/sapp/chat:${RUN}-ssw`;
+  const ws1 = new WebSocket(`${chat.replace(/^http/, "ws")}/ws?name=before`, { perMessageDeflate: false });
+  await new Promise((r, j) => (ws1.once("open", r), ws1.once("error", j)));
+  ws1.send("written before sleep");
+  await sleep(1500);
+  ws1.close();
+  const node = (await get(`${chat}/history`)).headers.get("x-pool-node")!;
+  const slept = await admin(`sleep-node?node=${node}`);
+  assert.equal(slept.slept, true, JSON.stringify(slept));
+  const ws2 = new WebSocket(`${chat.replace(/^http/, "ws")}/ws?name=after`, { perMessageDeflate: false });
+  const first = await new Promise<any>((r, j) => {
+    ws2.once("message", (d) => r(JSON.parse(String(d))));
+    ws2.once("error", j);
+    ws2.once("unexpected-response", (_q, res) => j(new Error(`ws HTTP ${res.statusCode}`)));
+  });
+  assert.equal(first.type, "history");
+  assert.deepEqual(first.messages.map((m: any) => m.text), ["written before sleep"]);
+  ws2.close();
+});

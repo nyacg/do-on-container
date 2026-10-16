@@ -50,11 +50,7 @@ export async function tenantFetcher(env: TenantEnv, app: string): Promise<Fetche
       if (free === undefined) throw new Error("no free tenant slots on this node");
       tenantOf.set(free, app);
       starting.set(app, Date.now());
-      await env.SPAWNQ.fetch(`http://q/${free}`, { method: "PUT", body: app });
-      for (let t = 0; t < 10_000; t += 25) {
-        if ((await env.SLOTS.fetch(`http://s/${free}/ready`)).ok) break;
-        await sleep(25);
-      }
+      await spawn(env, free, app);
       starting.delete(app);
       slotOf.set(app, free);
     } else {
@@ -64,6 +60,34 @@ export async function tenantFetcher(env: TenantEnv, app: string): Promise<Fetche
     if (slot === undefined) throw new Error(`tenant ${app} failed to start`);
   }
   return env[`SLOT${slot}`];
+}
+
+/** Ask the spawner to (re)start `app` on `slot` and wait for this spawn's ready marker. */
+async function spawn(env: TenantEnv, slot: number, app: string) {
+  const nonce = crypto.randomUUID();
+  await env.SPAWNQ.fetch(`http://q/${slot}`, { method: "PUT", body: `${app} ${nonce}` });
+  for (let t = 0; t < 10_000; t += 25) {
+    const r = await env.SLOTS.fetch(`http://s/${slot}/ready`);
+    if (r.ok && (await r.text()).trim() === nonce) return;
+    await sleep(25);
+  }
+  throw new Error(`tenant ${app} did not start on slot ${slot}`);
+}
+
+/**
+ * Forward to the tenant's process; if its socket is dead (process gone), restart it once.
+ * Only retried for requests without a body (WebSocket upgrades, GETs).
+ */
+export async function tenantFetch(env: TenantEnv, app: string, req: Request): Promise<Response> {
+  const retryable = req.method === "GET" || req.method === "HEAD";
+  try {
+    return await (await tenantFetcher(env, app)).fetch(retryable ? req.clone() : req);
+  } catch (e) {
+    const slot = slotOf.get(app);
+    if (!retryable || slot === undefined) throw e;
+    await spawn(env, slot, app);
+    return (await tenantFetcher(env, app)).fetch(req);
+  }
 }
 
 /** Run an admin operation on every running tenant process. */
