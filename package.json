@@ -3,13 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node container/build.mjs && node web/build.mjs",
+    "build": "node scripts/gen-facet.mjs && node container/build.mjs && node web/build.mjs",
     "typecheck": "tsc --noEmit",
     "deploy": "npm run build && wrangler deploy",
-    "dev:node": "npm run build && docker build -t do-pool-node:dev container"
+    "dev:node": "npm run build && docker build -t do-pool-node:dev container",
+    "test:parity": "node --import tsx --test --test-reporter=spec test/parity.test.ts",
+    "test:lifecycle": "node --import tsx --test --test-reporter=spec --test-timeout=7200000 test/lifecycle.test.ts",
+    "deploy:preview": "npm run build && wrangler deploy --env preview",
+    "deploy:control": "npm run build && wrangler deploy --env control"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261014.1",
+    "@cloudflare/workers-types": "^5.20261015.1",
     "@types/node": "^26.6.5",
     "@types/ws": "^8.18.2",
     "esbuild": "^0.28.2",

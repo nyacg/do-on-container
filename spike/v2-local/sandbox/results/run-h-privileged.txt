@@ -1,0 +1,80 @@
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 000001ffffffffff NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=0
+-- [none] shell: uid=0 cat_t2=[secret-of-t2] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [none] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:0 NSpid:55 CapEff:000001ffffffffff NoNewPrivs:0 Seccomp:0  mntns=shared netns=shared userns=shared wrapper=[workerd/root/rss=49936k ]
+   [none] disk-escape t2: status=200 secret-of-t2 
+   [none] disk own t1:    status=200 secret-of-t1 
+   [none] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [setpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: Permission denied] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [setpriv] workerd OK first_req=28ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:156 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=shared netns=shared userns=shared wrapper=[workerd/t1/rss=49824k ]
+   [setpriv] disk-escape t2: status=404 Not Found
+   [setpriv] disk own t1:    status=200 secret-of-t1 
+   [setpriv] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-root] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533503,4026533505,4026531837,4026533504, 
+   [unshare-root] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:269,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=shared wrapper=[unshare/root/rss=884k workerd/t1/rss=49824k ]
+   [unshare-root] disk-escape t2: status=404 Not Found
+   [unshare-root] disk own t1:    status=200 secret-of-t1 
+   [unshare-root] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-userns] shell: mount: /tenants/t1: filesystem was mounted, but any subsequent operation failed: Permission denied. uid=0 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533504,4026533508,4026533503,4026533505, 
+   [unshare-userns] workerd OK first_req=29ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:382,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[unshare/t1/rss=884k workerd/t1/rss=49820k ]
+   [unshare-userns] disk-escape t2: status=404 Not Found
+   [unshare-userns] disk own t1:    status=200 secret-of-t1 
+   [unshare-userns] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [bwrap] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc sbin tenants tmp usr ] pids_visible=5 ns=4026533504,4026533511,4026533642,4026533509, 
+   [bwrap] workerd OK first_req=31ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:500,2 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[bwrap/t1/rss=1640k bwrap/t1/rss=1220k workerd/t1/rss=49812k ]
+   [bwrap] disk-escape t2: status=404 Not Found
+   [bwrap] disk own t1:    status=200 secret-of-t1 
+   [bwrap] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"symlink"},{"name":"proc","type":"directory"},{"name":"sbin","type"
+-- [bwrap-suid] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc sbin tenants tmp usr ] pids_visible=5 ns=4026533504,4026533511,4026533503,4026533509, 
+   [bwrap-suid] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:614,3 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[bwrap-suid/t1/rss=1632k bwrap-suid/t1/rss=1220k workerd/t1/rss=53268k ]
+   [bwrap-suid] disk-escape t2: status=404 Not Found
+   [bwrap-suid] disk own t1:    status=200 secret-of-t1 
+   [bwrap-suid] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"symlink"},{"name":"proc","type":"directory"},{"name":"sbin","type"
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533511,4026533503,4026533509, 
+   [nsjail] workerd OK first_req=23ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:719,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[nsjail/root/rss=6612k workerd/t1/rss=56700k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [nsjail-nouserns] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533503,4026533510,4026531837,4026533508, 
+   [nsjail-nouserns] workerd OK first_req=30ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:825,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=shared wrapper=[nsjail/root/rss=6624k workerd/t1/rss=56692k ]
+   [nsjail-nouserns] disk-escape t2: status=404 Not Found
+   [nsjail-nouserns] disk own t1:    status=200 secret-of-t1 
+   [nsjail-nouserns] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [nsjail-unpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533511,4026533503,4026533509, 
+   [nsjail-unpriv] workerd OK first_req=29ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:933,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[nsjail/t1/rss=6496k workerd/t1/rss=56884k ]
+   [nsjail-unpriv] disk-escape t2: status=404 Not Found
+   [nsjail-unpriv] disk own t1:    status=200 secret-of-t1 
+   [nsjail-unpriv] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+
+## NET=share
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 000001ffffffffff NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=share NSJ_SECCOMP=0
+-- [bwrap] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc sbin tenants tmp usr ] pids_visible=5 ns=4026533504,4026533373,4026533511,4026533509, 
+   [bwrap] workerd OK first_req=30ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1054,2 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=shared userns=own wrapper=[bwrap/t1/rss=1648k bwrap/t1/rss=1092k workerd/t1/rss=56700k ]
+   [bwrap] disk-escape t2: status=404 Not Found
+   [bwrap] disk own t1:    status=200 secret-of-t1 
+   [bwrap] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"symlink"},{"name":"proc","type":"directory"},{"name":"sbin","type"
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533373,4026533503,4026533509, 
+   [nsjail] workerd OK first_req=30ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1160,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=shared userns=own wrapper=[nsjail/root/rss=6624k workerd/t1/rss=56848k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [unshare-root] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533503,4026533373,4026531837,4026533504, 
+   [unshare-root] workerd OK first_req=33ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1268,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=shared userns=shared wrapper=[unshare/root/rss=884k workerd/t1/rss=56696k ]
+   [unshare-root] disk-escape t2: status=404 Not Found
+   [unshare-root] disk own t1:    status=200 secret-of-t1 
+   [unshare-root] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+
+## NSJ_SECCOMP=1
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 000001ffffffffff NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=1
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533511,4026533503,4026533509, 
+   [nsjail] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1388,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=own netns=own userns=own wrapper=[nsjail/root/rss=6624k workerd/t1/rss=56820k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [nsjail-unpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533511,4026533503,4026533509, 
+   [nsjail-unpriv] workerd OK first_req=27ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1496,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=own netns=own userns=own wrapper=[nsjail/t1/rss=6484k workerd/t1/rss=56688k ]
+   [nsjail-unpriv] disk-escape t2: status=404 Not Found
+   [nsjail-unpriv] disk own t1:    status=200 secret-of-t1 
+   [nsjail-unpriv] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"

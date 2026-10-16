@@ -1,0 +1,9 @@
+10001
+cat: /tenants/t2/secret: Permission denied
+CapEff: 0000000000000000 NoNewPrivs: 1 Seccomp: 2 Seccomp_filters: 2 
+unshare: unshare failed: Operation not permitted
+unshare_rc=1
+{"tenant":"t1","count":1}
+Uid: 10001 10001 10001 10001 NoNewPrivs: 1 Seccomp: 2 Seccomp_filters: 2 
+status=404
+Not Found

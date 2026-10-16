@@ -14,6 +14,29 @@ a month instead of $4,050. Objects that mostly hibernate should stay real DOs. S
 Live demo (while it's up): https://do-pool.do-pool-lab.workers.dev. It has two demos (live cursors
 and a Yjs editor), each with a backend switch, plus a pool dashboard.
 
+> **v2** ([`docs/v2.md`](docs/v2.md)) adds:
+>
+> - alarms that survive moves and crashes
+> - native `ctx.container` with region-local nodes
+> - snapshot sleep/wake
+> - Dynamic Workers + facets, with hot code swaps
+> - a sandboxed process per tenant app for untrusted code
+>
+> An API parity suite runs the same assertions against real DOs, pooled DOs, real facets and pooled
+> facets. Preview: https://do-pool-v2.do-pool-lab.workers.dev.
+
+| Capability | Real DO | do-pool v1 | do-pool v2 |
+|---|---|---|---|
+| SQL / KV / transactions / WebSocket hibernation API | ✅ | ✅ | ✅ |
+| Alarms (incl. retries) | ✅ | ⚠️ lost on move or crash | ✅ |
+| Zero lost writes on planned moves | n/a | ⚠️ rare race | ✅ |
+| Write acknowledged after replication | ✅ | ❌ RPO 30 s | ❌ RPO 30 s on hard failure |
+| Near its users | ✅ | ❌ | ✅ region-local nodes |
+| Scale to zero | ✅ | ⚠️ | ✅ snapshot sleep/wake |
+| Dynamic code (Worker Loader + facets), hot swaps | ✅ | ❌ | ✅ |
+| Untrusted tenant code | ✅ | ❌ | ✅ process + namespaces per app, in a microVM |
+| Point-in-time recovery | ✅ | ❌ | ❌ |
+
 ## How it works
 
 ```
@@ -73,13 +96,25 @@ Then register it in `objects/index.ts`, `container/workerd.capnp` and `wrangler.
 | `spike/` | phase-1 feasibility spike (instance-type and runtime comparisons) |
 | `FINDINGS.md` | phase-1 notes |
 
+## Tests
+
+```sh
+# API parity: identical assertions against each backend (v2 preview)
+BACKENDS=do,pool,do-facet,pool-facet,pool-sbx npm run test:parity
+# Pool guarantees (slow): alarms across move/SIGTERM/SIGKILL, zero-loss migration under writes,
+# control-plane deploy under load, sleep/wake, facet migration + code swap, sandbox isolation
+ADMIN_TOKEN=... npm run test:lifecycle
+```
+
 ## Run it
 
 ```sh
 npm install
 cp .env.example .env            # CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, ADMIN_TOKEN
 npx wrangler r2 bucket create do-pool-checkpoints
-npm run deploy                  # builds the container bundle + web, then wrangler deploy
+npm run deploy                  # v1: builds the container bundle + web, then wrangler deploy
+npm run deploy:control          # v2 pool (nodes, Placement, bridge, image); restarts nodes
+npm run deploy:preview          # v2 edge Worker; doesn't touch the pool
 echo "$ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN
 ```
 

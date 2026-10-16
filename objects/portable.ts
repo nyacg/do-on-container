@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { readSnapshot } from "./ckpt-store";
+import { dumpStorage, gunzip, gzip, restoreStorage, type Snapshot } from "./storage-dump";
 
 /**
  * Base class for Durable Objects that can run either on Cloudflare (real DO) or inside a
@@ -10,6 +11,9 @@ import { readSnapshot } from "./ckpt-store";
  *  - dirty tracking on `ctx.storage` writes, so the node's periodic flush only checkpoints
  *    objects that changed
  *  - drain support (checkpoint + close sockets with 1012) for scale-down and rollouts
+ *  - alarms that survive moves: the pending alarm is part of the checkpoint and re-armed on
+ *    hydration; objects with pending alarms are tracked so a draining/sleeping node can hand
+ *    them to Placement's alarm registry, which wakes them when they're due
  *
  * Put initialisation in `onStart()` instead of the constructor: it runs after hydration.
  */
@@ -27,6 +31,10 @@ export const poolRegistry = {
   dirty: new Set<string>(),
   /** Keys Placement says have never existed anywhere: nothing to hydrate. */
   fresh: new Set<string>(),
+  /** Assignment epoch of the request that's about to construct each object (set by the router). */
+  epochs: new Map<string, number>(),
+  /** Objects with a pending alarm (set via setAlarm, cleared when it fires or is deleted). */
+  alarmed: new Set<string>(),
   checkpoints: 0,
   checkpointBytes: 0,
   segments: 0,
@@ -38,7 +46,6 @@ export function poolKey(cls: string, name: string) {
 }
 
 const META_TABLE = "_pool_meta";
-type Row = Record<string, SqlStorageValue>;
 
 export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> extends DurableObject<Env> {
   /** Stable class slug used in URLs and checkpoint keys, e.g. "cursors". */
@@ -47,6 +54,10 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
   readonly doName: string;
   private poolKey: string;
   private poolDrained = false; // set by poolClose()
+  /** Second fence, inside the object: requests that got past the router's fence just before a
+   *  move are refused (410) or finished before the hand-off snapshot is taken. */
+  private poolFrozen = false;
+  private poolInflight = 0;
   /** Untracked storage handle for the pool's own reads/writes (meta, restore, dump). */
   private rawStorage: DurableObjectStorage;
 
@@ -58,8 +69,41 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
     this.poolKey = poolKey(slug, this.doName);
     this.rawStorage = ctx.storage;
     if (this.pooled) {
-      this.ctx = trackWrites(ctx, () => poolRegistry.dirty.add(this.poolKey)) as typeof this.ctx;
-      poolRegistry.live.set(this.poolKey, new WeakRef(this));
+      const key = this.poolKey;
+      this.ctx = trackWrites(ctx, {
+        dirty: () => poolRegistry.dirty.add(key),
+        alarm: (set) => (set ? poolRegistry.alarmed.add(key) : poolRegistry.alarmed.delete(key)),
+      }) as typeof this.ctx;
+      poolRegistry.live.set(key, new WeakRef(this));
+      // workerd deletes the alarm before invoking the handler; a handler that re-arms re-adds
+      // the key via setAlarm, and a handler that throws is retried, so it stays pending.
+      const fetchHandler = (this as { fetch?: (req: Request) => Promise<Response> }).fetch;
+      if (fetchHandler) {
+        (this as any).fetch = async (req: Request) => {
+          if (this.poolFrozen) return new Response("object moved", { status: 410, headers: { "x-pool-moved": "object" } });
+          this.poolInflight++;
+          try {
+            return await fetchHandler.call(this, req);
+          } finally {
+            this.poolInflight--;
+          }
+        };
+      }
+      const handler = (this as { alarm?: (info?: AlarmInvocationInfo) => unknown }).alarm;
+      if (handler) {
+        (this as any).alarm = async (info?: AlarmInvocationInfo) => {
+          // Mid-move: throw so workerd retries it (after an abandoned move), or so the retire's
+          // deleteAll cancels it (the new node re-armed it from the hand-off snapshot).
+          if (this.poolFrozen) throw new Error("object is moving");
+          poolRegistry.alarmed.delete(key);
+          try {
+            return await handler.call(this, info);
+          } catch (e) {
+            poolRegistry.alarmed.add(key);
+            throw e;
+          }
+        };
+      }
     }
     ctx.blockConcurrencyWhile(async () => {
       if (this.pooled) await this.poolHydrate();
@@ -70,16 +114,37 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
   /** Override for setup that needs storage (runs after hydration). */
   protected onStart(): void | Promise<void> {}
 
+  /** Extra state to include in checkpoints (e.g. a facet's own database). JSON-serialisable. */
+  protected poolExtraState(): unknown | Promise<unknown> {
+    return undefined;
+  }
+
+  /** Counterpart of poolExtraState(), called after the object's own storage is restored. */
+  protected poolRestoreExtra(_extra: unknown): void | Promise<void> {}
+
+  /** For state the write tracker can't see (e.g. writes inside a facet). */
+  protected markPoolDirty() {
+    if (this.pooled) poolRegistry.dirty.add(this.poolKey);
+  }
+
   // ---- pool lifecycle (called by the in-container router over RPC) ----
 
   /**
    * Gzipped dump of this object's storage. Clears the dirty flag; the router writes the bytes
    * into a segment (and re-marks the object dirty if that write fails).
    */
-  async poolSnapshot(): Promise<ArrayBuffer> {
+  async poolSnapshot(): Promise<{ bytes: ArrayBuffer; alarm: number | null }> {
     poolRegistry.dirty.delete(this.poolKey);
     const snapshot = dumpStorage(this.rawStorage);
-    return gzip(JSON.stringify({ v: 1, key: this.poolKey, at: Date.now(), ...snapshot }));
+    const alarm = await this.rawStorage.getAlarm();
+    const extra = await this.poolExtraState();
+    const bytes = await gzip(JSON.stringify({ v: 2, key: this.poolKey, at: Date.now(), alarm, extra, ...snapshot }));
+    return { bytes, alarm };
+  }
+
+  /** No-op RPC: constructing the object hydrates it and re-arms its alarm (alarm registry wake). */
+  async poolWake(): Promise<{ alarm: number | null }> {
+    return { alarm: await this.rawStorage.getAlarm() };
   }
 
   /**
@@ -90,12 +155,20 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
   async poolClose(reason = "moved"): Promise<void> {
     if (this.poolDrained) return;
     this.poolDrained = true;
+    this.poolFrozen = true;
+    for (let waited = 0; this.poolInflight > 0 && waited < 10_000; waited += 10) await sleep(10);
     for (const ws of this.ctx.getWebSockets()) {
       try {
         ws.close(1012, reason);
       } catch {}
     }
     poolRegistry.live.delete(this.poolKey);
+  }
+
+  /** The move was abandoned (nothing persisted): serve again. */
+  async poolUnfreeze(): Promise<void> {
+    this.poolFrozen = false;
+    this.poolDrained = false;
   }
 
   /**
@@ -110,105 +183,42 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
     this.ctx.abort("moved to another node");
   }
 
-  poolStats() {
-    return { key: this.poolKey, sockets: this.ctx.getWebSockets().length };
+  /** Open WebSockets held by this object (the node only sleeps when the total is 0). */
+  async poolSockets(): Promise<number> {
+    return this.ctx.getWebSockets().length;
   }
 
   private async poolHydrate() {
-    const sql = this.rawStorage.sql;
+    const storage = this.rawStorage;
+    const sql = storage.sql;
     sql.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (k TEXT PRIMARY KEY, v TEXT)`);
-    const done = sql.exec(`SELECT v FROM ${META_TABLE} WHERE k = 'hydrated'`).toArray();
-    if (done.length) return;
+    const meta = Object.fromEntries(
+      sql.exec<{ k: string; v: string }>(`SELECT k, v FROM ${META_TABLE}`).toArray().map((r) => [r.k, r.v]),
+    );
+    const epoch = poolRegistry.epochs.get(this.poolKey) ?? 0;
+    poolRegistry.epochs.delete(this.poolKey);
+    if (meta.hydrated) {
+      // A local copy from an older assignment (e.g. this node slept or was presumed dead and the
+      // object lived elsewhere meanwhile) is stale: drop it and hydrate from the latest checkpoint.
+      if (!(epoch > Number(meta.epoch ?? 0))) return;
+      await storage.deleteAll();
+      sql.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (k TEXT PRIMARY KEY, v TEXT)`);
+    }
     const fresh = poolRegistry.fresh.delete(this.poolKey);
     const bytes = fresh ? null : await readSnapshot(this.env, this.poolKey);
     if (bytes) {
-      restoreStorage(this.rawStorage, JSON.parse(await gunzip(bytes)));
+      const snap = JSON.parse(await gunzip(bytes)) as Snapshot & { alarm?: number | null; extra?: unknown };
+      restoreStorage(storage, snap);
+      if (snap.extra !== undefined) await this.poolRestoreExtra(snap.extra);
+      // workerd keeps alarms outside the object's tables; re-arm explicitly (past-due fires now).
+      if (snap.alarm) {
+        await storage.setAlarm(snap.alarm);
+        poolRegistry.alarmed.add(this.poolKey);
+      }
       poolRegistry.hydrations++;
     }
-    sql.exec(`INSERT OR REPLACE INTO ${META_TABLE} VALUES ('hydrated', ?)`, String(Date.now()));
+    sql.exec(`INSERT OR REPLACE INTO ${META_TABLE} VALUES ('hydrated', ?), ('epoch', ?)`, String(Date.now()), String(epoch));
   }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Storage dump / restore. Works on any SQLite-backed DO: walks sqlite_master for user tables,
-// indexes, triggers and views, plus the KV API (which lives in a hidden table).
-
-interface Snapshot {
-  schema: { type: string; name: string; sql: string }[];
-  tables: { name: string; cols: string[]; rows: unknown[][] }[];
-  kv: [string, unknown][];
-}
-
-function dumpStorage(storage: DurableObjectStorage): Snapshot {
-  const sql = storage.sql;
-  const schema = sql
-    .exec<{ type: string; name: string; sql: string }>(
-      `SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE '_pool_%' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`,
-    )
-    .toArray();
-  const tables = schema
-    .filter((s) => s.type === "table")
-    .map(({ name }) => {
-      const cursor = sql.exec(`SELECT * FROM "${name}"`);
-      return { name, cols: cursor.columnNames, rows: [...cursor.raw()].map((r) => r.map(encodeValue)) };
-    });
-  const kv = [...storage.kv.list()].map(([k, v]) => [k, encodeValue(v)] as [string, unknown]);
-  return { schema, tables, kv };
-}
-
-function restoreStorage(storage: DurableObjectStorage, snap: Snapshot) {
-  const sql = storage.sql;
-  storage.transactionSync(() => {
-    const order = ["table", "index", "trigger", "view"];
-    for (const s of [...snap.schema].sort((a, b) => order.indexOf(b.type) - order.indexOf(a.type))) {
-      sql.exec(`DROP ${s.type.toUpperCase()} IF EXISTS "${s.name}"`);
-    }
-    for (const s of [...snap.schema].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))) {
-      if (s.type === "table") {
-        sql.exec(s.sql);
-        const t = snap.tables.find((t) => t.name === s.name);
-        if (!t) continue;
-        const stmt = `INSERT INTO "${t.name}" (${t.cols.map((c) => `"${c}"`).join(",")}) VALUES (${t.cols.map(() => "?").join(",")})`;
-        for (const row of t.rows) sql.exec(stmt, ...(row.map(decodeValue) as SqlStorageValue[]));
-      } else {
-        sql.exec(s.sql);
-      }
-    }
-    for (const [k, v] of snap.kv) storage.kv.put(k, decodeValue(v));
-  });
-}
-
-function encodeValue(v: unknown): unknown {
-  if (v instanceof ArrayBuffer) return { $b: b64(new Uint8Array(v)) };
-  if (ArrayBuffer.isView(v)) return { $u8: b64(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)) };
-  return v;
-}
-function decodeValue(v: any): any {
-  if (v && typeof v === "object") {
-    if (typeof v.$b === "string") return unb64(v.$b).buffer;
-    if (typeof v.$u8 === "string") return unb64(v.$u8);
-  }
-  return v;
-}
-function b64(u8: Uint8Array) {
-  let s = "";
-  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-function unb64(s: string) {
-  const bin = atob(s);
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return u8;
-}
-
-async function gzip(s: string): Promise<ArrayBuffer> {
-  const stream = new Blob([s]).stream().pipeThrough(new CompressionStream("gzip"));
-  return new Response(stream).arrayBuffer();
-}
-async function gunzip(buf: ArrayBuffer): Promise<string> {
-  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -219,7 +229,11 @@ async function gunzip(buf: ArrayBuffer): Promise<string> {
 const READ_ONLY_SQL =
   /^\s*(select|pragma|explain|with\s[\s\S]*?\)\s*select|create\s+(unique\s+)?(table|index|trigger|view)\s+if\s+not\s+exists)\b/i;
 
-function trackWrites(ctx: DurableObjectState, markDirty: () => void): DurableObjectState {
+function trackWrites(
+  ctx: DurableObjectState,
+  hooks: { dirty: () => void; alarm: (set: boolean) => void },
+): DurableObjectState {
+  const markDirty = hooks.dirty;
   const bind = (target: any, value: any) => (typeof value === "function" ? value.bind(target) : value);
   const sql = new Proxy(ctx.storage.sql, {
     get(t, p) {
@@ -244,6 +258,9 @@ function trackWrites(ctx: DurableObjectState, markDirty: () => void): DurableObj
       if (p === "sql") return sql;
       if (p === "kv") return kv;
       const v = Reflect.get(t, p, t);
+      if (p === "setAlarm" || p === "deleteAlarm")
+        return (...a: any[]) => (markDirty(), hooks.alarm(p === "setAlarm"), (v as Function).apply(t, a));
+      if (p === "deleteAll") return (...a: any[]) => (markDirty(), hooks.alarm(false), (v as Function).apply(t, a));
       if (typeof p === "string" && writes.has(p)) return (...a: any[]) => (markDirty(), (v as Function).apply(t, a));
       return bind(t, v);
     },
@@ -255,3 +272,5 @@ function trackWrites(ctx: DurableObjectState, markDirty: () => void): DurableObj
     },
   });
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

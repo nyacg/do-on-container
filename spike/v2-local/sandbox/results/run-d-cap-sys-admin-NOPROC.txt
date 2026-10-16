@@ -1,0 +1,15 @@
+== outer ns(mnt,net,user,pid)=4026533503,4026533510,4026531837,4026533508,
+== container: CapEff: 00000000a82425fb NoNewPrivs: 0 Seccomp: 2  userns_max=31322 NET=unshare NSJ_SECCOMP=0
+-- [unshare-userns] shell: mount: /tenants/t1: filesystem was mounted, but failed to update userspace mount table. uid=0 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533644,4026533646,4026533643,4026533645, 
+   [unshare-userns] workerd OK first_req=29ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:65,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[unshare/t1/rss=884k workerd/t1/rss=49824k ]
+   [unshare-userns] disk-escape t2: status=404 Not Found
+   [unshare-userns] disk own t1:    status=200 secret-of-t1 
+   [unshare-userns] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [bwrap] shell: bwrap: pivot_root: Operation not permitted 
+   [bwrap] workerd FAILED after 6ms: bwrap: pivot_root: Operation not permitted 
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 8ms: 
+   [nsjail] nsjail log: [E][2026-10-16T00:41:20+0000][1] initCloneNs():432 pivot_root('/tmp/nsjail.0.root', '/tmp/nsjail.0.root'): Operation not permitted [F][2026-10-16T00:41:20+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:41:20+0000][196] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:41:20+0000][196] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: 
+   [nsjail-unpriv] workerd FAILED after 23ms: 
+   [nsjail-unpriv] nsjail log: [E][2026-10-16T00:41:21+0000][1] initCloneNs():432 pivot_root('/tmp/nsjail.10001.root', '/tmp/nsjail.10001.root'): Operation not permitted [F][2026-10-16T00:41:21+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:41:21+0000][245] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:41:21+0000][245] standaloneMode():275 Couldn't launch the child process 
