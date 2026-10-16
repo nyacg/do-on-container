@@ -1,4 +1,4 @@
-import type { Conformance, CursorRoom, FacetHost, Ticker, YDoc } from "../objects";
+import type { BindingsDemo, Conformance, CursorRoom, FacetHost, Ticker, YDoc } from "../objects";
 import type { PoolNodeV2 } from "./pool-node-v2";
 import type { Placement } from "./placement";
 
@@ -8,6 +8,8 @@ export interface Env {
   DOC: DurableObjectNamespace<YDoc>;
   TICKER: DurableObjectNamespace<Ticker>;
   CONF: DurableObjectNamespace<Conformance>;
+  /** Uses KV/R2/AI/service/DO bindings (objects/bindings-demo.ts). */
+  BIND: DurableObjectNamespace<BindingsDemo>;
   APPS: DurableObjectNamespace<FacetHost>;
   LOADER: WorkerLoader;
   // Pool machinery

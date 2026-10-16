@@ -70,6 +70,11 @@ Browser ──► Worker (edge router, static assets)
   (rollout, scale-down, sleep) flushes everything first.
 - **The bridge** (`src/bridge.ts`) gives code inside the container access to Worker bindings
   through plain HTTP to `bridge.internal`, intercepted by the Container's outbound handler.
+- **Bindings** (v2): pooled objects use `this.env.KV`, `FILES` (R2), `AI`, service bindings and
+  other Durable Objects (`env.BIND.getByName(x).ping()`) with the same code as a real DO. Each
+  call is recorded by a proxy and replayed on the real binding by the bridge; DO→DO calls are
+  routed through Placement to whichever node owns the target. Declare bindings in wrangler.jsonc
+  `env.control` and rebuild. See [docs/bindings.md](docs/bindings.md).
 
 Write classes the usual way, but extend `PortableDurableObject` and put setup in `onStart()`:
 
@@ -103,8 +108,11 @@ Then register it in `objects/index.ts`, `container/workerd.capnp` and `wrangler.
 # API parity: identical assertions against each backend (v2 preview)
 BACKENDS=do,pool,do-facet,pool-facet,pool-sbx npm run test:parity
 # Pool guarantees (slow): alarms across move/SIGTERM/SIGKILL, zero-loss migration under writes,
-# control-plane deploy under load, sleep/wake, facet migration + code swap, sandbox isolation
+# control-plane deploy under load, sleep/wake, facet migration + code swap, sandbox isolation,
+# DO→DO binding calls that follow their target across a move
 ADMIN_TOKEN=... npm run test:lifecycle
+# Bindings (KV, R2, AI, another Worker, another DO), real DO vs pooled
+npm run test:bindings
 ```
 
 ## Run it
@@ -180,7 +188,8 @@ Admin API (`Authorization: Bearer $ADMIN_TOKEN`): `POST /api/{add-node,drain?nod
   which is fine for thousands of objects but not millions.
 - Placement is a single DO: every *new* object placement goes through it. Lookups are cached
   per isolate.
-- Pooled objects can't call each other directly through DO bindings yet. Route through the
-  bridge.
+- Bindings from pooled objects add ~15–25 ms per call (a hop through the control Worker) and
+  buffer bodies instead of streaming them. No WebSockets over bindings. Sandboxed tenants and
+  dynamic apps get no bindings. See [docs/bindings.md](docs/bindings.md).
 - Containers have no location control, so pooled objects aren't near their users the way real
   DOs are.

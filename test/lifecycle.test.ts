@@ -79,8 +79,10 @@ async function fired(o: ReturnType<typeof obj>) {
 
 run("ensure-two-nodes", async () => {
   await admin("config?minNodes=2&maxNodes=4");
-  const s = await waitFor(status, (s) => s.nodes.filter((n: any) => n.status === "active").length >= 2, 180_000, 5000);
-  assert.ok(s.nodes.filter((n: any) => n.status === "active").length >= 2, JSON.stringify(s.nodes));
+  // A sleeping node counts towards the floor (Placement wakes it on the first request to it).
+  const up = (s: any) => s.nodes.filter((n: any) => n.status === "active" || n.status === "sleeping").length >= 2;
+  const s = await waitFor(status, up, 180_000, 5000);
+  assert.ok(up(s), JSON.stringify(s.nodes.map((n: any) => [n.name, n.status])));
 });
 
 run("alarm-migrate", async () => {
@@ -293,6 +295,45 @@ run("facet-code-swap", async () => {
   assert.equal(await closed, 1012);
   // restore the stock conformance app for other tests
   await get(`${BASE}/api/code?app=conf&builtin=conformance`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } });
+});
+
+run("bindings-follow-move", async () => {
+  // Pooled object A keeps calling pooled object B through env.BIND while B migrates to another
+  // node: the bridge's cached placement goes stale, B's old node answers 410, and the call is
+  // re-resolved and retried. Every call lands exactly once on B (2 pings per /do call).
+  const callBind = async (name: string, op: string, qs = "") => {
+    for (let attempt = 0; ; attempt++) {
+      const res = await get(`${BASE}/pool/bind/${RUN}-${name}/${op}${qs}`);
+      const text = await res.text();
+      if (!text.startsWith("{") && attempt < 20) {
+        await sleep(1500);
+        continue;
+      }
+      const body = JSON.parse(text);
+      assert.equal(body.error, undefined, `${op}: ${body.error}`);
+      return { ...body, node: res.headers.get("x-pool-node") };
+    }
+  };
+  const before = await callBind("bm-b", "count");
+  assert.equal(before.count, 0);
+  let calls = 0;
+  let stop = false;
+  const caller = (async () => {
+    while (!stop) {
+      await callBind("bm-a", "do", `?to=${RUN}-bm-b`);
+      calls++;
+    }
+  })();
+  await sleep(3000);
+  const moved = await admin(`migrate?key=${encodeURIComponent(`bind/${RUN}-bm-b`)}`);
+  assert.notEqual(moved.node, before.node, "B migrated to a different node");
+  await sleep(4000);
+  stop = true;
+  await caller;
+  const after = await callBind("bm-b", "count");
+  assert.equal(after.node, moved.node, "B now answers from its new node");
+  assert.ok(calls >= 4, `only ${calls} calls`);
+  assert.equal(after.count, calls * 2, `${calls} calls → ${after.count} pings recorded`);
 });
 
 run("sandbox-isolation", async () => {

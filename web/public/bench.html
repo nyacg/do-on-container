@@ -60,6 +60,9 @@
       <tr><td>Awake 1 Hz objects per ¼ vCPU</td><td>n/a</td><td>~1,000 comfortably; saturates at ~1,500–1,700</td></tr>
       <tr><td>Connections per container</td><td>n/a</td><td>hard cap 4,096 (platform limit)</td></tr>
       <tr><td>Browser round trip (cursors demo)</td><td>18–114 ms</td><td>v1: 82 ms (container far away) · v2: 97 ms (region-local)</td></tr>
+      <tr><td>KV get from an object (median)</td><td>5 ms</td><td>19–30 ms (via the bridge)</td></tr>
+      <tr><td>Service-binding RPC from an object</td><td>~0 ms (same thread)</td><td>16–23 ms</td></tr>
+      <tr><td>DO → DO RPC</td><td>36–37 ms</td><td>31–33 ms (via Placement)</td></tr>
     </tbody></table>
     <p class="note">Round-trip numbers come from a home connection in California and are noisy. In v1 containers started wherever
       Cloudflare had room (we saw Paris and Osaka). In v2 they start in the same city as their node DO.</p></div>
@@ -90,8 +93,9 @@
       <li>4,096 connections per container; one hot object competes with its neighbours for CPU.</li>
       <li>workerd doesn't enforce per-tenant CPU limits; the sandboxed tier gives each app its own process instead.</li></ul></div>
     <div class="card"><h3>API gaps</h3><ul>
-      <li>Pooled objects can't call other DOs or arbitrary bindings directly. Only R2 and Placement are reachable,
-        through the bridge.</li>
+      <li>Bindings (KV, R2, AI, services, other DOs) work with the same code, but each call adds ~15–25 ms
+        (it's replayed in the control Worker), bodies are buffered rather than streamed, and WebSockets can't go over
+        a binding. Sandboxed apps get no bindings.</li>
       <li>Moves close WebSockets with 1012; clients must reconnect (most libraries do).</li>
       <li>Facets can't own alarms anywhere (Cloudflare or workerd); the host proxies them.</li></ul></div>
   </div>

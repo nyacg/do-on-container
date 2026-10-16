@@ -6,18 +6,20 @@
  */
 import { CLASSES, isClassSlug, poolKey, poolRegistry, type ClassSlug } from "../objects";
 import { writeSegment } from "../objects/ckpt-store";
+import { applyChain, encode, type Step } from "../objects/rpc-wire";
 import type { PoolEnv } from "../objects/portable";
 import { appOfKey, byTenant, fanOut, fromTenantKey, tenantFetch, tenantFetcher, tenants, toTenantKey, type TenantEnv } from "./tenants";
 
 export { TenantBridge } from "./tenants";
 
-export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl } from "../objects";
+export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl, BindingsDemo } from "../objects";
 
 interface Env extends PoolEnv, TenantEnv {
   CURSORS: DurableObjectNamespace;
   DOC: DurableObjectNamespace;
   TICKER: DurableObjectNamespace;
   CONF: DurableObjectNamespace;
+  BIND: DurableObjectNamespace;
   APPS: DurableObjectNamespace;
   STATS: Fetcher;
   NODE_NAME: string;
@@ -271,11 +273,28 @@ async function admin(url: URL, req: Request, env: Env): Promise<Response> {
   return new Response("unknown admin path", { status: 404 });
 }
 
+/**
+ * Another pooled object's RPC to this one (`env.CONF.getByName(x).ping()` elsewhere in the
+ * pool, sent here by the bridge after Placement resolved the owner): replay the method chain
+ * on the local stub, like Workers RPC.
+ */
+async function call(stub: DurableObjectStub, req: Request): Promise<Response> {
+  const { chain } = (await req.json()) as { chain: Step[] };
+  try {
+    return Response.json({ ok: await encode(await applyChain(stub, chain, (doid) => ({ $doid: doid }))) });
+  } catch (e) {
+    return Response.json({ error: { name: (e as Error)?.name ?? "Error", message: (e as Error)?.message ?? String(e) } });
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     startedAt ||= Date.now();
     const url = new URL(req.url);
-    if (url.pathname.startsWith("/__")) return admin(url, req, env);
+    // Admin paths only for the node's own callers (PoolNode, supervisor): object traffic always
+    // carries x-do-class, and an object's path (e.g. stub.fetch("http://x/__drain") from another
+    // pooled object, via the bridge) must reach the object, not the node.
+    if (url.pathname.startsWith("/__") && !req.headers.has("x-do-class")) return admin(url, req, env);
     const cls = req.headers.get("x-do-class") ?? "";
     const name = req.headers.get("x-do-name") ?? "";
     if (!isClassSlug(cls) || !name) return new Response(`do-pool node ${env.NODE_NAME} ok`);
@@ -296,6 +315,8 @@ export default {
     if (req.headers.get("x-do-fresh") === "1") poolRegistry.fresh.add(key);
     poolRegistry.epochs.set(key, epoch);
     const ns = env[CLASSES[cls].binding] as DurableObjectNamespace;
-    return ns.get(ns.idFromName(name)).fetch(req);
+    const stub = ns.get(ns.idFromName(name));
+    if (req.headers.get("x-do-call") === "1") return call(stub, req);
+    return stub.fetch(req);
   },
 };

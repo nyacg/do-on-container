@@ -30,6 +30,7 @@ const router :Workerd.Worker = (
     (name = "DOC", durableObjectNamespace = "YDoc"),
     (name = "TICKER", durableObjectNamespace = "Ticker"),
     (name = "CONF", durableObjectNamespace = "Conformance"),
+    (name = "BIND", durableObjectNamespace = "BindingsDemo"),
     (name = "APPS", durableObjectNamespace = "FacetHost"),
     # Dynamic Workers for facet apps (needs `workerd serve --experimental`).
     (name = "LOADER", workerLoader = (id = "apps")),
@@ -45,6 +46,7 @@ const router :Workerd.Worker = (
     (className = "YDoc", uniqueKey = "do-pool-doc", enableSql = true),
     (className = "Ticker", uniqueKey = "do-pool-ticker", enableSql = true),
     (className = "Conformance", uniqueKey = "do-pool-conf", enableSql = true),
+    (className = "BindingsDemo", uniqueKey = "do-pool-bind", enableSql = true),
     (className = "FacetHost", uniqueKey = "do-pool-apps", enableSql = true),
   ],
   durableObjectStorage = (localDisk = "data"),

@@ -1,0 +1,6 @@
+{
+  "name": "do-pool-v2-echo",
+  "main": "index.js",
+  "compatibility_date": "2026-10-15",
+  "workers_dev": false
+}

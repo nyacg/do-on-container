@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { readSnapshot } from "./ckpt-store";
+import { BINDINGS } from "./generated/bindings";
+import { withRemoteBindings } from "./remote-bindings";
 import { dumpStorage, gunzip, gzip, restoreStorage, type Snapshot } from "./storage-dump";
 
 /**
@@ -70,6 +72,9 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
     this.rawStorage = ctx.storage;
     if (this.pooled) {
       const key = this.poolKey;
+      // Bindings declared in wrangler.jsonc (KV, R2, AI, services, other DO classes) don't exist
+      // inside the container: give the object proxies that run each call in the control Worker.
+      this.env = withRemoteBindings(env, BINDINGS);
       this.ctx = trackWrites(ctx, {
         dirty: () => poolRegistry.dirty.add(key),
         alarm: (set) => (set ? poolRegistry.alarmed.add(key) : poolRegistry.alarmed.delete(key)),

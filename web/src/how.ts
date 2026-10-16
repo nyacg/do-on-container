@@ -102,7 +102,7 @@ const STEPS: Step[] = [
       <p>Each node is a <b>PoolNode</b> Durable Object with a container next to it. The request goes to the container
       as a <b>raw TCP passthrough</b>, so no JavaScript runs per WebSocket message. Inside, workerd's router hands it to
       the object.</p>
-      <p>Code in the container reaches Cloudflare only through <b>bridge.internal</b>: for checkpoints in R2 and stats.</p>`,
+      <p>Code in the container reaches Cloudflare only through <b>bridge.internal</b>: checkpoints in R2, stats, and your objects' bindings (step 10).</p>`,
     fig: () =>
       box(20, 240, 120, 70, "Browser") +
       box(170, 240, 150, 70, "Edge Worker", "", "") +
@@ -298,10 +298,43 @@ const STEPS: Step[] = [
       text(30, 492, "cost: 128 MB × awake time", "tiny") + text(355, 492, "cost: ~0.4–2.5 MB per object", "tiny") + text(680, 492, "cost: ~17 MB per app per node", "tiny"),
   },
   {
-    kicker: "10 · Compare",
+    kicker: "10 · Bindings",
+    title: "KV, R2, AI, other Workers and other DOs: same code",
+    body: `<p>A pooled object writes <code>await this.env.FILES.put(k, v)</code> or
+      <code>this.env.BIND.getByName("b").ping()</code>, exactly as a real Durable Object would.</p>
+      <ul><li>Inside the container those names are <b>proxies</b>. They record the call chain and send it to
+      <b>bridge.internal/rpc</b> in one round trip.</li>
+      <li>The <b>control Worker</b> holds the real bindings (declared in <code>wrangler.jsonc</code>), replays the call and
+      sends the result back: bytes, Dates, R2 objects, Requests and Responses included.</li>
+      <li>For <b>another pooled DO</b>, there's no binding to replay on. The bridge asks Placement which node owns it and
+      calls it there, retrying if it's mid-move.</li></ul>
+      <p>Cost: +15–25 ms per call; DO→DO is about the same as on Cloudflare (~31–37 ms). Bodies are buffered, not streamed.
+      Sandboxed apps get no bindings. <a href="https://github.com/nyacg/do-on-container/blob/main/docs/bindings.md">More</a></p>`,
+    seq: [
+      "Object A calls env.FILES.put(k, v). The proxy records [put(k, v)] and nothing has been sent yet.",
+      "Awaiting it sends one POST to bridge.internal/rpc. The container's egress is intercepted by its PoolNode.",
+      "The control Worker's Bridge checks the name against the manifest and runs env.FILES.put(k, v) on real R2.",
+      "The R2Object comes back tagged, and A gets .etag, .uploaded (a Date), .text()…",
+      "A calls env.BIND.getByName('b').ping(). The bridge asks Placement: b lives on node 2.",
+      "The call goes to node 2's router (x-do-call), which runs b.ping() on its local stub, like Workers RPC.",
+    ],
+    fig: () =>
+      `<g class="box vm"><rect x="20" y="40" width="300" height="420" rx="14"/></g>` + text(36, 66, "container · node 1", "sub") +
+      box(50, 90, 240, 90, "object A", "this.env.FILES / this.env.BIND", "pool") +
+      `<g data-seq="1">${box(50, 220, 240, 64, "proxy: [put(k, v)]", "records, sends on await", "")}</g>` +
+      box(50, 360, 240, 60, "bridge.internal", "", "") +
+      `<g data-seq="2">${edge("b2", "M170,182 L170,218", "pool")}${edge("b2b", "M170,286 L170,358", "pool")}${edge("b2c", "M290,390 L408,390", "pool")}</g>` +
+      box(410, 340, 220, 100, "control Worker", "Bridge · /rpc · manifest", "do") +
+      `<g data-seq="3">${box(720, 400, 240, 60, "R2 · KV · AI · Workers", "real bindings", "store")}${edge("b3", "M630,410 L718,425", "store")}</g>` +
+      `<g data-seq="4">${text(440, 470, "← { ok: R2Object }", "tiny")}</g>` +
+      `<g data-seq="5">${box(410, 60, 220, 70, "Placement", "bind/b → node 2", "do")}${edge("b5", "M520,338 L520,132", "dash")}</g>` +
+      `<g data-seq="6">${`<g class="box vm"><rect x="690" y="40" width="290" height="300" rx="14"/></g>`}${text(706, 66, "container · node 2", "sub")}${box(720, 100, 230, 60, "router", "x-do-call → stub.ping()", "")}${box(720, 200, 230, 90, "object b", "ping() runs here", "pool")}${edge("b6", "M630,380 C680,380 680,130 718,130", "pool")}${edge("b6b", "M835,162 L835,198", "pool")}</g>`,
+  },
+  {
+    kicker: "11 · Compare",
     title: "Feature by feature",
     body: `<p>Every row marked ✅ for the pool is covered by a test that runs against the real deployment:
-      55 API-parity tests across five backends and 12 lifecycle tests.</p>
+      55 API-parity tests across five backends, 12 binding tests (real vs pooled) and 12 lifecycle tests.</p>
       <p>See <a href="/bench.html">Benchmarks & limitations</a> for numbers and for what's still missing.</p>`,
     fig: () => "",
     html: () => `<table class="cmp"><thead><tr><th></th><th><span class="dot" style="background:var(--orange)"></span>Real Durable Object</th><th><span class="dot" style="background:var(--blue)"></span>do-pool</th></tr></thead><tbody>
@@ -315,7 +348,8 @@ const STEPS: Step[] = [
       <tr><td>Dynamic code (facets)</td><td class="yes">✅</td><td class="yes">✅ + hot swap</td></tr>
       <tr><td>Untrusted code</td><td class="yes">✅</td><td class="part">⚠️ sandboxed tier only</td></tr>
       <tr><td>Point-in-time recovery</td><td class="yes">✅ 30 days</td><td class="no">❌</td></tr>
-      <tr><td>Calling other DOs and bindings</td><td class="yes">✅</td><td class="part">⚠️ via the bridge only</td></tr>
+      <tr><td>KV, R2, AI, other Workers</td><td class="yes">✅</td><td class="yes">✅ same code, +15–25 ms per call</td></tr>
+      <tr><td>Calling other Durable Objects</td><td class="yes">✅</td><td class="yes">✅ RPC + fetch, via Placement</td></tr>
       <tr><td>Cost, 1,000 awake objects</td><td>$4,050 / month</td><td class="yes">≈ $22 / month</td></tr>
     </tbody></table>`,
   },

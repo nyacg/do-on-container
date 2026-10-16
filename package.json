@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/gen-facet.mjs && node container/build.mjs && node web/build.mjs",
+    "build": "node scripts/gen-facet.mjs && node scripts/gen-bindings.mjs && node container/build.mjs && node web/build.mjs",
     "typecheck": "tsc --noEmit",
     "deploy": "npm run build && wrangler deploy",
     "dev:node": "npm run build && docker build -t do-pool-node:dev container",
@@ -12,7 +12,8 @@
     "deploy:preview": "npm run build && wrangler deploy --env preview",
     "deploy:control": "npm run build && wrangler deploy --env control",
     "publish:examples": "node scripts/publish-examples.mjs",
-    "test:examples": "node --import tsx --test --test-reporter=spec test/examples.test.ts"
+    "test:examples": "node --import tsx --test --test-reporter=spec test/examples.test.ts",
+    "test:bindings": "node --import tsx --test --test-reporter=spec test/bindings.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261015.1",

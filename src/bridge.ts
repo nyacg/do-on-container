@@ -1,5 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import type { Env } from "./env";
+import { rpc } from "./rpc-server";
 
 /**
  * Outbound handler for http://bridge.internal — how code inside the container reaches
@@ -11,6 +12,8 @@ import type { Env } from "./env";
  *   GET     /list?prefix=   → R2 key listing
  *   POST    /stats          → Placement.report(node, stats)
  *   POST    /drained        → Placement.registerAlarms(drain result's pending alarms)
+ *   POST    /rpc            → a pooled object's binding call (env.KV / FILES / AI / ECHO / CONF…),
+ *                             replayed on the real binding; see src/rpc-server.ts
  */
 export async function bridge(req: Request, env: Env, ctx: { containerId: string }): Promise<Response> {
   const url = new URL(req.url);
@@ -38,6 +41,7 @@ export async function bridge(req: Request, env: Env, ctx: { containerId: string 
     } while (cursor);
     return Response.json(keys);
   }
+  if (url.pathname === "/rpc" && req.method === "POST") return rpc(req, env);
   if (url.pathname === "/drained" && req.method === "POST") {
     // The supervisor drained on SIGTERM (platform stop): hand pending alarms to Placement.
     const r = (await req.json()) as { alarms?: { key: string; at: number }[] };

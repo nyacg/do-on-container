@@ -67,13 +67,22 @@
       },
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PoolNodeV2", "Placement"] }],
       "version_metadata": { "binding": "VERSION" },
-      "r2_buckets": [{ "binding": "CHECKPOINTS", "bucket_name": "do-pool-v2-checkpoints" }],
+      // Bindings for pooled objects: declared here (the Worker that holds them), reached from
+      // the container through the bridge. `npm run build` regenerates the container's list.
+      "r2_buckets": [
+        { "binding": "CHECKPOINTS", "bucket_name": "do-pool-v2-checkpoints" },
+        { "binding": "FILES", "bucket_name": "do-pool-v2-files" }
+      ],
+      "kv_namespaces": [{ "binding": "KV", "id": "2044c117f3374ffe8be2125b036a52e2" }],
+      "ai": { "binding": "AI" },
+      "services": [{ "binding": "ECHO", "service": "do-pool-v2-echo" }],
       "vars": {
         "POOL_MIN_NODES": "1",
         "POOL_MAX_NODES": "6",
         "POOL_MAX_CONNS": "3500",
         "POOL_CKPT_INTERVAL": "30",
-        "POOL_INSTANCE": "{\"vcpu\":1,\"memoryMib\":2048,\"diskMb\":4000}"
+        "POOL_INSTANCE": "{\"vcpu\":1,\"memoryMib\":2048,\"diskMb\":4000}",
+        "GREETING": "hello from a wrangler var"
       }
     },
     "preview": {
@@ -93,6 +102,7 @@
           { "name": "TICKER", "class_name": "Ticker" },
           { "name": "CONF", "class_name": "Conformance" },
           { "name": "APPS", "class_name": "FacetHost" },
+          { "name": "BIND", "class_name": "BindingsDemo" },
           { "name": "POOL", "class_name": "PoolNodeV2", "script_name": "do-pool-v2-control" },
           { "name": "PLACEMENT", "class_name": "Placement", "script_name": "do-pool-v2-control" }
         ]
@@ -103,13 +113,22 @@
           "new_sqlite_classes": ["CursorRoom", "YDoc", "Ticker", "Conformance", "PoolNodeV2", "Placement"]
         },
         { "tag": "v2", "new_sqlite_classes": ["FacetHost"] },
-        { "tag": "v3", "deleted_classes": ["PoolNodeV2", "Placement"] }
+        { "tag": "v3", "deleted_classes": ["PoolNodeV2", "Placement"] },
+        { "tag": "v4", "new_sqlite_classes": ["BindingsDemo"] }
       ],
       "worker_loaders": [{ "binding": "LOADER" }],
       "version_metadata": { "binding": "VERSION" },
-      "r2_buckets": [{ "binding": "CHECKPOINTS", "bucket_name": "do-pool-v2-checkpoints" }],
+      // Same bindings as the control env, so the real-DO arm of each class sees the same env.
+      "r2_buckets": [
+        { "binding": "CHECKPOINTS", "bucket_name": "do-pool-v2-checkpoints" },
+        { "binding": "FILES", "bucket_name": "do-pool-v2-files" }
+      ],
+      "kv_namespaces": [{ "binding": "KV", "id": "2044c117f3374ffe8be2125b036a52e2" }],
+      "ai": { "binding": "AI" },
+      "services": [{ "binding": "ECHO", "service": "do-pool-v2-echo" }],
       "vars": {
-        "POOL_REGIONS": "1"
+        "POOL_REGIONS": "1",
+        "GREETING": "hello from a wrangler var"
       }
     }
   }
