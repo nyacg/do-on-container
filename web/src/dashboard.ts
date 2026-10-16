@@ -1,3 +1,5 @@
+import { mountNav } from "./nav";
+
 type PoolNodeRow = {
   name: string;
   status: string;
@@ -32,5 +34,6 @@ async function refresh() {
   const alarms = s.alarms?.n ? ` · ${s.alarms.n} alarms parked in the registry` : "";
   document.getElementById("summary")!.textContent = `${s.assignments} objects assigned · min ${s.config.minNodes} / max ${s.config.maxNodes} nodes${alarms}`;
 }
+mountNav();
 refresh();
 setInterval(refresh, 2000);

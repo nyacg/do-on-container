@@ -1,41 +1,39 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>do-pool · dynamic apps (facets)</title><link rel="stylesheet" href="/style.css"></head>
-<body>
-<div id="bar"><a href="/">do-pool</a><span class="pill pool">dynamic apps</span>
-  <span>Durable Object classes loaded at runtime (Worker Loader) and run as facets: on Cloudflare, in the pool, or in a per-app sandbox.</span></div>
-<main class="apps">
-  <div class="controls">
-    <label>app <select id="app"></select></label>
-    <label>backend <select id="backend">
-      <option value="do/app">real DO facet (Dynamic Workers)</option>
-      <option value="pool/app" selected>pooled facet</option>
-      <option value="pool/sapp">sandboxed tenant process</option>
-    </select></label>
-    <label>object <input id="obj" value="demo" size="12"></label>
-    <span id="target" class="muted"></span>
-  </div>
-  <div class="cols">
-    <section>
-      <h3>Try it</h3>
+<title>do-pool · dynamic apps</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="apps">
+  <section class="hero">
+    <p class="eyebrow">Dynamic apps · Worker Loader + Durable Object facets</p>
+    <h1>Code loaded at runtime, running as a Durable Object</h1>
+    <p>Each app below is a plain <code>class App extends DurableObject</code>, published as code. No deploy is involved.
+      Pick where it runs. It's the same code and the same API, with a different trade-off in cost, isolation and durability.</p>
+  </section>
+
+  <div id="apps" class="apptabs"></div>
+  <div id="backends" class="grid c3 backends"></div>
+
+  <div class="grid c2 work">
+    <section class="card">
+      <div class="panel-head"><h3>Requests</h3><span id="target" class="mono note"></span></div>
       <div id="presets" class="presets"></div>
       <form id="req" class="req">
         <select id="method"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
-        <input id="path" value="/" size="28"><input id="body" placeholder="body" size="14"><button>send</button>
+        <input id="path" value="/" class="grow"><input id="body" placeholder="body" size="12"><button class="btn primary">Send</button>
       </form>
-      <pre id="res" class="out">…</pre>
-      <h3>WebSocket</h3>
-      <form id="wsform" class="req"><input id="wspath" value="/ws?name=you" size="22"><button id="wsbtn">connect</button>
-        <input id="wsmsg" placeholder="message" size="16"><button id="wssend" type="button" disabled>send</button></form>
-      <pre id="wslog" class="out small"></pre>
+      <div id="meta" class="chips"></div>
+      <pre id="res" class="out">Send a request to wake the object.</pre>
+      <div class="panel-head"><h3>WebSocket</h3><span id="wsstate" class="tag">closed</span></div>
+      <form id="wsform" class="req"><input id="wspath" value="/ws?name=you" class="grow"><button id="wsbtn" class="btn">Connect</button></form>
+      <form id="wssendform" class="req"><input id="wsmsg" placeholder="type a message…" class="grow"><button id="wssend" class="btn" disabled>Send</button></form>
+      <div id="wslog" class="log"></div>
     </section>
-    <section>
-      <h3>Source <span id="codeid" class="muted"></span></h3>
+    <section class="card">
+      <div class="panel-head"><h3>Source</h3><span id="codeid" class="tag pool"></span></div>
       <textarea id="src" spellcheck="false"></textarea>
-      <div class="req"><input id="token" type="password" placeholder="admin token" size="18">
-        <button id="publish">publish new version</button><span id="pubres" class="muted"></span></div>
-      <p class="muted small">Publishing swaps the code of every running object of this app on its next request:
-        data is kept, open WebSockets are closed with 1012 and reconnect to the new code.</p>
+      <form id="pubform" class="req"><input id="token" type="password" placeholder="admin token" size="16">
+        <button id="publish" class="btn">Publish new version</button></form>
+      <p id="pubres" class="note">Publishing swaps the code of every running object of this app on its next request.
+        Data is kept, and open sockets close with 1012 and reconnect to the new code.</p>
     </section>
   </div>
 </main>

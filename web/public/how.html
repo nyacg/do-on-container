@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · how it works</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="how">
+  <section class="hero">
+    <p class="eyebrow">How it works</p>
+    <h1>Durable Objects, bin-packed into containers</h1>
+    <p>The same Durable Object class can run on Cloudflare's Durable Objects or packed by the thousand into a container.
+      Step through to see where requests go, where state lives, and what happens when things move, sleep or crash.</p>
+  </section>
+  <div class="walk card">
+    <div class="walk-top">
+      <div id="stepper" class="stepper"></div>
+      <div class="walk-nav"><button id="prev" class="btn">← Back</button><button id="next" class="btn primary">Next →</button></div>
+    </div>
+    <div class="walk-body">
+      <div class="walk-text"><p class="eyebrow" id="kicker"></p><h2 id="title"></h2><div id="text"></div>
+        <p id="caption" class="caption"></p></div>
+      <div class="walk-fig"><svg id="fig" viewBox="0 0 1000 520" role="img"></svg></div>
+    </div>
+  </div>
+</main>
+<script type="module" src="/js/how.js"></script></body></html>

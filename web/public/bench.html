@@ -1,0 +1,105 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · benchmarks & limitations</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="bench">
+  <section class="hero">
+    <p class="eyebrow">Benchmarks & limitations</p>
+    <h1>What it costs, how it performs, and where it falls short</h1>
+    <p>All numbers are from runs against real Cloudflare deployments in October 2026 (raw logs in
+      <code>bench/results</code>). Where the pool is worse than real Durable Objects, this page says so.</p>
+  </section>
+
+  <div class="grid c4">
+    <div class="card tile"><div class="num">≈180×</div><div class="lbl">cheaper for 1,000 always-awake objects ($22 vs $4,050 / month)</div></div>
+    <div class="card tile"><div class="num">55 / 55</div><div class="lbl">API parity tests pass on all 5 backends</div></div>
+    <div class="card tile"><div class="num">0</div><div class="lbl">acknowledged writes lost in planned moves, sleeps and deploys (≈11.5k writes tested)</div></div>
+    <div class="card tile"><div class="num">≤ 30 s</div><div class="lbl">of writes at risk if a node dies abruptly; a real DO loses none</div></div>
+  </div>
+
+  <h2 class="section">Cost</h2>
+  <p class="lede">Real Durable Objects bill wall-clock time at 128 MB per awake object. The pool bills a container's
+    memory plus the CPU it actually uses. The pool wins once objects are awake more than about <b>0.3% of the time
+    (~2 h/month)</b>. Below that, hibernating real DOs are cheaper.</p>
+  <div class="card" style="margin-bottom:14px"><iframe src="/cost.html" title="cost chart" class="embed"></iframe></div>
+  <div class="grid c2">
+    <div class="card">
+      <table class="cmp plain"><thead><tr><th>Workload (per month)</th><th>Real DO</th><th>do-pool</th></tr></thead><tbody>
+        <tr><td>100 always-awake objects</td><td>$405</td><td>$13</td></tr>
+        <tr><td>1,000 always-awake objects</td><td>$4,050</td><td>$22</td></tr>
+        <tr><td>10,000 always-awake objects</td><td>$40,500</td><td>$188</td></tr>
+        <tr><td>1,000 objects awake 5% of the time</td><td>$203</td><td>$13</td></tr>
+        <tr><td>1,000 objects awake 0.1% of the time</td><td class="yes">$4</td><td>$13</td></tr>
+        <tr><td>Chatty rooms: 50 × 10 users × 5 msg/s</td><td>$251</td><td>$124</td></tr>
+      </tbody></table>
+      <p class="note">List prices; free allowances ignored. Pool capacity is measured: 1,000 awake 1 Hz objects on ¼ vCPU
+        billed ≈ 0.2 vCPU. v2 nodes default to 1 vCPU / 2 GiB because the new scheduling mode doesn't accept the ¼-vCPU
+        size, which is similar per object.</p>
+    </div>
+    <div class="card"><h3 style="margin-top:0">Where the money goes</h3>
+      <ul class="note" style="font-size:14px;color:var(--ink-2)">
+        <li><b>Real DO:</b> 0.125 GB × every awake second × $12.50 per million GB-s = $4.05 per always-awake object
+          per month, plus requests (incoming WebSocket messages at 1/20). Outgoing frames are free.</li>
+        <li><b>do-pool:</b> container memory ($0.0000025 per GiB-s) + disk + <i>active</i> CPU ($0.00002 per vCPU-s),
+          plus 2 R2 PUTs per node per 30 s. The fronting PoolNode DO isn't billed for wall-clock time on raw-passthrough
+          sockets (measured).</li>
+        <li><b>Fan-out flips it.</b> Outgoing frames are free on real DOs but cost CPU in a container, so chatty
+          broadcast rooms come out only ~2× cheaper.</li></ul></div>
+  </div>
+
+  <h2 class="section">Recovery & availability</h2>
+  <p class="lede">How long until an object answers again after each kind of event. Time is on a log scale.
+    A real Durable Object has no equivalent for most of these, because Cloudflare handles them invisibly.</p>
+  <div class="card"><div id="recovery"></div></div>
+
+  <h2 class="section">Performance & density</h2>
+  <div class="grid c2">
+    <div class="card"><table class="cmp plain"><thead><tr><th>Measure</th><th>Real DO</th><th>do-pool</th></tr></thead><tbody>
+      <tr><td>Memory per resident object</td><td>billed as 128 MB</td><td>~0.2 MB (SQLite object in workerd)</td></tr>
+      <tr><td>Memory per WebSocket</td><td>n/a (not billed)</td><td>~77 KB; ~370 KB with permessage-deflate (we strip it)</td></tr>
+      <tr><td>Throughput</td><td>each object has its own thread</td><td>~11k WebSocket frames/s per vCPU (naive broadcast); hosts vary ~1.7×</td></tr>
+      <tr><td>Awake 1 Hz objects per ¼ vCPU</td><td>n/a</td><td>~1,000 comfortably; saturates at ~1,500–1,700</td></tr>
+      <tr><td>Connections per container</td><td>n/a</td><td>hard cap 4,096 (platform limit)</td></tr>
+      <tr><td>Browser round trip (cursors demo)</td><td>18–114 ms</td><td>v1: 82 ms (container far away) · v2: 97 ms (region-local)</td></tr>
+    </tbody></table>
+    <p class="note">Round-trip numbers come from a home connection in California and are noisy. In v1 containers started wherever
+      Cloudflare had room (we saw Paris and Osaka). In v2 they start in the same city as their node DO.</p></div>
+    <div class="card"><table class="cmp plain"><thead><tr><th>Operation</th><th>Measured</th></tr></thead><tbody>
+      <tr><td>Checkpoint writes</td><td>2 R2 PUTs per node per 30 s, regardless of object count</td></tr>
+      <tr><td>Drain 690 objects (one segment)</td><td>2.8 s</td></tr>
+      <tr><td>Filesystem snapshot (sleep)</td><td>2.5–4.4 s · 0.2–10 MB</td></tr>
+      <tr><td>Restore from snapshot</td><td>0.6–2.2 s</td></tr>
+      <tr><td>Load app code (facet), cold / warm</td><td>~3 ms / ~0 ms</td></tr>
+      <tr><td>Memory per app version / per object</td><td>~2.2 MB / ~0.4 MB on shared code</td></tr>
+      <tr><td>Sandboxed tenant process</td><td>~17 MB, ~25 ms to start</td></tr>
+    </tbody></table></div>
+  </div>
+
+  <h2 class="section">Limitations: read these before using it</h2>
+  <div class="grid c2 limits">
+    <div class="card"><h3>Durability</h3><ul>
+      <li><b>Writes are acknowledged before they're durable.</b> A node that dies without draining loses up to 30 s of
+        writes. Real DOs replicate first. Don't put money or anything irreplaceable in a pooled object.</li>
+      <li>No point-in-time recovery. Old R2 segments are never compacted or garbage-collected yet.</li></ul></div>
+    <div class="card"><h3>Deploys</h3><ul>
+      <li>Under Cloudflare's <code>durable_object</code> scheduling, a container dies with its DO, so
+        <b>deploying the control-plane Worker restarts every node</b> over ~1–13 min. No acknowledged writes were lost
+        in tests, but one write stalled for 32 s.</li>
+      <li>Edge Worker deploys don't touch the pool, which is why it's split into two Workers.</li></ul></div>
+    <div class="card"><h3>Scale & shape</h3><ul>
+      <li>A single Placement DO handles every <i>new</i> placement; lookups are cached per isolate.</li>
+      <li>4,096 connections per container; one hot object competes with its neighbours for CPU.</li>
+      <li>workerd doesn't enforce per-tenant CPU limits; the sandboxed tier gives each app its own process instead.</li></ul></div>
+    <div class="card"><h3>API gaps</h3><ul>
+      <li>Pooled objects can't call other DOs or arbitrary bindings directly. Only R2 and Placement are reachable,
+        through the bridge.</li>
+      <li>Moves close WebSockets with 1012; clients must reconnect (most libraries do).</li>
+      <li>Facets can't own alarms anywhere (Cloudflare or workerd); the host proxies them.</li></ul></div>
+  </div>
+
+  <h2 class="section">How these were measured</h2>
+  <p class="lede"><code>test/parity.test.ts</code> runs the same API assertions against all five backends.
+    <code>test/lifecycle.test.ts</code> exercises moves, crashes, deploys, sleep/wake and the sandbox, each against the live
+    deployment. <code>bench/</code> has the load generator, analytics pull (billing data from Cloudflare's GraphQL API)
+    and cost model. Total Cloudflare spend for everything: about $1.20.</p>
+</main>
+<script type="module" src="/js/bench.js"></script></body></html>
