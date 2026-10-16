@@ -75,7 +75,10 @@
       ],
       "kv_namespaces": [{ "binding": "KV", "id": "2044c117f3374ffe8be2125b036a52e2" }],
       "ai": { "binding": "AI" },
-      "services": [{ "binding": "ECHO", "service": "do-pool-v2-echo" }],
+      "services": [
+        { "binding": "ECHO", "service": "do-pool-v2-echo" },
+        { "binding": "MODERATOR", "service": "do-pool-v2-echo", "entrypoint": "Moderator" }
+      ],
       "vars": {
         "POOL_MIN_NODES": "1",
         "POOL_MAX_NODES": "6",
@@ -103,6 +106,8 @@
           { "name": "CONF", "class_name": "Conformance" },
           { "name": "APPS", "class_name": "FacetHost" },
           { "name": "BIND", "class_name": "BindingsDemo" },
+          { "name": "ROOMS", "class_name": "AiRoom" },
+          { "name": "LOBBY", "class_name": "Lobby" },
           { "name": "POOL", "class_name": "PoolNodeV2", "script_name": "do-pool-v2-control" },
           { "name": "PLACEMENT", "class_name": "Placement", "script_name": "do-pool-v2-control" }
         ]
@@ -114,7 +119,8 @@
         },
         { "tag": "v2", "new_sqlite_classes": ["FacetHost"] },
         { "tag": "v3", "deleted_classes": ["PoolNodeV2", "Placement"] },
-        { "tag": "v4", "new_sqlite_classes": ["BindingsDemo"] }
+        { "tag": "v4", "new_sqlite_classes": ["BindingsDemo"] },
+        { "tag": "v5", "new_sqlite_classes": ["AiRoom", "Lobby"] }
       ],
       "worker_loaders": [{ "binding": "LOADER" }],
       "version_metadata": { "binding": "VERSION" },
@@ -125,7 +131,10 @@
       ],
       "kv_namespaces": [{ "binding": "KV", "id": "2044c117f3374ffe8be2125b036a52e2" }],
       "ai": { "binding": "AI" },
-      "services": [{ "binding": "ECHO", "service": "do-pool-v2-echo" }],
+      "services": [
+        { "binding": "ECHO", "service": "do-pool-v2-echo" },
+        { "binding": "MODERATOR", "service": "do-pool-v2-echo", "entrypoint": "Moderator" }
+      ],
       "vars": {
         "POOL_REGIONS": "1",
         "GREETING": "hello from a wrangler var"

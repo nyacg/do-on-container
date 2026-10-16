@@ -309,7 +309,8 @@ const STEPS: Step[] = [
       <li>For <b>another pooled DO</b>, there's no binding to replay on. The bridge asks Placement which node owns it and
       calls it there, retrying if it's mid-move.</li></ul>
       <p>Cost: +15–25 ms per call; DO→DO is about the same as on Cloudflare (~31–37 ms). Bodies are buffered, not streamed.
-      Sandboxed apps get no bindings. <a href="https://github.com/nyacg/do-on-container/blob/main/docs/bindings.md">More</a></p>`,
+      Sandboxed apps get no bindings. <a href="https://github.com/nyacg/do-on-container/blob/main/docs/bindings.md">More</a></p>
+      <p>Try it: <a href="/rooms.html">AI chat rooms</a>. Every message shows the binding calls it made and how long each took.</p>`,
     seq: [
       "Object A calls env.FILES.put(k, v). The proxy records [put(k, v)] and nothing has been sent yet.",
       "Awaiting it sends one POST to bridge.internal/rpc. The container's egress is intercepted by its PoolNode.",

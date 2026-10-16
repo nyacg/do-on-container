@@ -22,6 +22,39 @@ Same class, same code, two backends. On Cloudflare (`/do/bind/<name>`) those are
 In the pool (`/pool/bind/<name>`) they're proxies that run each call in the control Worker.
 `test/bindings.test.ts` runs identical assertions against both.
 
+## Example: AI chat rooms
+
+Live at https://do-pool-v2.do-pool-lab.workers.dev/rooms.html (toggle real DO / pooled).
+
+![AI rooms example, pooled](rooms-example.png)
+[`objects/ai-room.ts`](../objects/ai-room.ts) is a chat room, and [`objects/lobby.ts`](../objects/lobby.ts)
+is the room directory. Both are written as ordinary Durable Objects:
+
+| binding | kind | what the room does with it |
+|---|---|---|
+| `MODERATOR` | another Worker, named entrypoint (`examples/echo-worker` → `Moderator`) | `moderate(text)` on every message (JS RPC) |
+| `AI` | Workers AI | answers messages that start with `@ai` (`llama-3.2-3b-instruct`, 120 tokens max) |
+| `KV` | Workers KV | caches answers by question for an hour |
+| `FILES` | R2 | attachments up to 1 MB. Only images are served inline; everything else is a download |
+| `LOBBY` | another Durable Object (pooled ↔ pooled in the pool) | `update(room, users, last, seq)` on join, leave and message; `takeAiBudget()` caps AI replies per day |
+
+Every message records a **trace** of the binding calls it made and how long each one took, and the
+page shows it under the message. Open the same room on both backends to compare. Example
+(pooled): `MODERATOR.moderate()` 15–20 ms, `KV.get()` 26 ms (hit), `LOBBY.takeAiBudget()` 31 ms,
+`AI.run()` 260 ms, `FILES.put()` ~200 ms.
+
+Two things the example had to handle that any DO calling another DO would:
+
+- **Calls to the same DO can arrive out of order.** A room's "message posted, 1 here" report can
+  overtake its "left, 0 here" report, so each report carries a sequence number and the lobby
+  ignores older ones. The same is true between real DOs; it isn't specific to the pool.
+- **Hibernatable sockets linger while closing.** `getWebSockets()` still lists a socket whose close
+  handler hasn't run, so presence counts only `readyState === OPEN`.
+
+Tests: `test/bindings.test.ts` → "AI room example", on both backends. It covers moderation,
+presence, the lobby (including dropping to 0 when everyone leaves), an AI answer followed by the
+same question served from KV, and an R2 upload/download.
+
 ## Adding a binding
 
 1. Declare it in `wrangler.jsonc` **under `env.control`**, the Worker that holds the real

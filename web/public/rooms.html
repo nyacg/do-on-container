@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>do-pool · AI rooms (bindings example)</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="rooms">
+  <section class="hero">
+    <p class="eyebrow">Bindings example</p>
+    <h1>An AI chat room, written as a plain Durable Object</h1>
+    <p>Each room is one Durable Object. It runs every message through a moderation Worker, answers <code>@ai …</code> with
+      Workers AI (cached in KV), keeps attachments in R2, and reports to a Lobby Durable Object. Run it as a real DO
+      or pooled in a container: the code is the same, and so are the calls. Under each message you can see which bindings it used and how long each call took.</p>
+  </section>
+
+  <div class="seg" id="backend"></div>
+
+  <div class="room-grid">
+    <aside>
+      <section class="card">
+        <div class="panel-head"><h3>Rooms</h3><span class="note" id="lobbystate"></span></div>
+        <ul id="rooms" class="roomlist"></ul>
+        <form id="newroom" class="req"><input id="roomname" class="grow" placeholder="new-room" pattern="[a-z0-9-]{1,32}"><button class="btn">Open</button></form>
+        <p class="note">Live from the <b>Lobby</b> Durable Object, which rooms update over a DO binding.</p>
+      </section>
+      <section class="card code">
+        <div class="panel-head"><h3>What the room calls</h3></div>
+<pre class="mono">// objects/ai-room.ts (excerpt)
+
+// another Worker (named entrypoint)
+const clean = await this.env.MODERATOR
+  .moderate(text);
+
+// KV, then another DO, then Workers AI
+let answer = await this.env.KV.get(key);
+if (!answer) {
+  await this.env.LOBBY
+    .getByName("global").takeAiBudget();
+  answer = (await this.env.AI.run(MODEL,
+    { messages })).response;
+  await this.env.KV.put(key, answer,
+    { expirationTtl: 3600 });
+}
+
+// R2
+await this.env.FILES.put(id, bytes);</pre>
+        <p class="note">In the pool, each call is replayed in the control Worker. <a href="https://github.com/nyacg/do-on-container/blob/main/docs/bindings.md">How it works</a></p>
+      </section>
+    </aside>
+
+    <section class="card chat">
+      <div class="panel-head">
+        <h3 id="title"></h3>
+        <span class="note" id="who"></span>
+      </div>
+      <div id="log" class="chatlog"></div>
+      <div id="typing" class="note typing"></div>
+      <form id="send" class="req composer">
+        <input id="name" size="10" title="your name">
+        <input id="msg" class="grow" placeholder="Say something, or start with @ai to ask the AI" autocomplete="off">
+        <label class="btn attach" title="attach a file (≤ 1 MB)">📎<input id="file" type="file" hidden></label>
+        <button class="btn primary">Send</button>
+      </form>
+      <div class="presets" id="tries"></div>
+    </section>
+  </div>
+</main>
+<script type="module" src="/js/rooms.js"></script></body></html>

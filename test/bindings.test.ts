@@ -5,8 +5,9 @@
  *
  *   BASE=https://do-pool-v2.do-pool-lab.workers.dev npm run test:bindings
  */
-import { describe, test } from "node:test";
+import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import WebSocket from "ws";
 
 const BASE = process.env.BASE ?? "https://do-pool-v2.do-pool-lab.workers.dev";
 const BACKENDS = (process.env.BACKENDS ?? "do,pool").split(",");
@@ -87,6 +88,109 @@ for (const backend of BACKENDS) {
       assert.deepEqual(r.fetched, { me: `${RUN}-b`, via: "fetch", method: "POST", body: `fetch from ${RUN}-a` });
       // The peer is an ordinary object at its own URL, with the pings in its own storage.
       assert.equal((await get(backend, "b", "count")).count, 2);
+    });
+  });
+}
+
+/** The AI rooms example (objects/ai-room.ts + objects/lobby.ts, web/public/rooms.html). */
+function join(backend: string, room: string, name: string) {
+  return new Promise<{ ws: WebSocket; next: (pred: (m: any) => boolean) => Promise<any> }>((resolve, reject) => {
+    const ws = new WebSocket(`${BASE.replace(/^http/, "ws")}/${backend}/room/${room}/ws?name=${name}`, { perMessageDeflate: false });
+    const messages: any[] = [];
+    const waiters: [(m: any) => boolean, (m: any) => void][] = [];
+    ws.on("message", (d) => {
+      const m = JSON.parse(String(d));
+      messages.push(m);
+      for (const w of [...waiters]) if (w[0](m)) (waiters.splice(waiters.indexOf(w), 1), w[1](m));
+    });
+    const next = (pred: (m: any) => boolean) =>
+      new Promise<any>((res, rej) => {
+        const i = messages.findIndex(pred);
+        if (i >= 0) return res(messages.splice(i, 1)[0]);
+        const t = setTimeout(() => rej(new Error("timed out waiting for a room message")), 30_000);
+        waiters.push([pred, (m) => (clearTimeout(t), messages.splice(messages.indexOf(m), 1), res(m))]);
+      });
+    ws.on("open", () => resolve({ ws, next }));
+    ws.on("error", reject);
+    ws.on("unexpected-response", (_q, r) => reject(new Error(`ws HTTP ${r.statusCode}`)));
+  });
+}
+
+for (const backend of BACKENDS) {
+  describe(`AI room example on ${backend}`, () => {
+    const room = `t-${RUN}-${backend}`;
+    const calls = (m: any) => (m.trace ?? []).map((t: any) => t.call);
+
+    // Sockets left open by a failed assertion would keep the test runner alive.
+    const open: WebSocket[] = [];
+    const joinT = async (r: string, n: string) => {
+      const c = await join(backend, r, n);
+      open.push(c.ws);
+      return c;
+    };
+    afterEach(() => {
+      for (const ws of open.splice(0)) ws.terminate();
+    });
+
+    test("moderation (service RPC), presence + lobby (DO RPC)", async () => {
+      await get(backend, "warm", "var"); // node up
+      const alice = await joinT(room, "alice");
+      assert.equal((await alice.next((m) => m.type === "history")).messages.length, 0);
+      alice.ws.send(JSON.stringify({ text: "what a darn  good   demo" }));
+      const m = await alice.next((m) => m.type === "msg");
+      assert.equal(m.text, "what a d*** good demo");
+      assert.deepEqual(calls(m), ["MODERATOR.moderate()"]);
+      const bob = await joinT(room, "bob");
+      const p = await alice.next((m) => m.type === "presence" && m.users.length === 2);
+      assert.deepEqual(p.users.sort(), ["alice", "bob"]);
+      assert.deepEqual(calls(p), ["LOBBY.update()"]);
+      const lobby = await (await fetch(`${BASE}/${backend}/lobby/tests`)).json(); // t-… rooms report here
+      assert.equal(lobby.pooled, backend === "pool");
+      assert.equal(lobby.rooms.find((r: any) => r.name === room)?.users, 2);
+      // Both leave at once: their "left" reports race each other (and any in-flight "posted" report).
+      bob.ws.close();
+      alice.ws.close();
+      let users = -1;
+      for (let i = 0; i < 20 && users !== 0; i++) {
+        await sleep(500);
+        users = (await (await fetch(`${BASE}/${backend}/lobby/tests`)).json()).rooms.find((r: any) => r.name === room)?.users;
+      }
+      assert.equal(users, 0, "room empty in the lobby once everyone left");
+    });
+
+    test("@ai: Workers AI answer, then the same question from KV", async () => {
+      const alice = await joinT(`${room}-ai`, "alice");
+      await alice.next((m) => m.type === "history");
+      // KV is shared by both backends, so the question is unique per backend and run.
+      const question = `@ai reply with just the word pong ${RUN} ${backend}`;
+      alice.ws.send(JSON.stringify({ text: question }));
+      const a = await alice.next((m) => m.type === "msg" && m.kind === "ai");
+      assert.ok(a.text.length > 0);
+      assert.deepEqual(calls(a), ["KV.get()", "LOBBY.takeAiBudget()", "AI.run()", "KV.put()"]);
+      assert.equal(a.trace[0].note, "miss");
+      alice.ws.send(JSON.stringify({ text: question }));
+      const b = await alice.next((m) => m.type === "msg" && m.kind === "ai");
+      assert.deepEqual(calls(b), ["KV.get()"]);
+      assert.deepEqual([b.trace[0].note, b.text], ["hit", a.text]);
+      alice.ws.close();
+    });
+
+    test("attachments in R2: upload, download as attachment", async () => {
+      const body = `hello from ${backend} ${RUN}`;
+      const res = await fetch(`${BASE}/${backend}/room/${room}-files/upload?name=alice&filename=note.txt`, {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body,
+      });
+      const m = await res.json();
+      assert.equal(m.kind, "file");
+      assert.deepEqual([m.file.name, m.file.size, m.file.type], ["note.txt", body.length, "text/plain"]);
+      assert.deepEqual(calls(m), ["FILES.put()"]);
+      const file = await fetch(`${BASE}/${backend}/room/${room}-files/files/${m.file.id}`);
+      assert.equal(await file.text(), body);
+      // Not an image: served as a download, never rendered on the site's origin.
+      assert.equal(file.headers.get("content-type"), "application/octet-stream");
+      assert.match(file.headers.get("content-disposition") ?? "", /attachment; filename="note.txt"/);
     });
   });
 }

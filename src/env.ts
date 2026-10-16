@@ -1,4 +1,4 @@
-import type { BindingsDemo, Conformance, CursorRoom, FacetHost, Ticker, YDoc } from "../objects";
+import type { AiRoom, BindingsDemo, Conformance, CursorRoom, FacetHost, Lobby, Ticker, YDoc } from "../objects";
 import type { PoolNodeV2 } from "./pool-node-v2";
 import type { Placement } from "./placement";
 
@@ -10,6 +10,9 @@ export interface Env {
   CONF: DurableObjectNamespace<Conformance>;
   /** Uses KV/R2/AI/service/DO bindings (objects/bindings-demo.ts). */
   BIND: DurableObjectNamespace<BindingsDemo>;
+  /** Bindings example: AI chat rooms and their lobby. */
+  ROOMS: DurableObjectNamespace<AiRoom>;
+  LOBBY: DurableObjectNamespace<Lobby>;
   APPS: DurableObjectNamespace<FacetHost>;
   LOADER: WorkerLoader;
   // Pool machinery

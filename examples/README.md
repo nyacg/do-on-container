@@ -33,7 +33,9 @@ npm run test:examples                         # all four apps × all three backe
 - Routes are relative to the object: `/pool/app/counter:mine/inc` arrives as `/inc`.
 - Everything in the DO API works, including alarms. Facets can't own alarms, so the host proxies
   them: `setAlarm` in the app sets the host's alarm, and the host's `alarm()` calls the app's.
-- Apps get no network (`globalOutbound: null`) and no bindings.
+- Apps get no network (`globalOutbound: null`) and no bindings. For an example that uses KV, R2,
+  Workers AI, another Worker and another DO, see the AI chat rooms ([docs/bindings.md](../docs/bindings.md)).
+  They're compiled-in classes rather than dynamic apps, because untrusted code shouldn't hold your bindings.
 - Publishing a new version (`POST /api/code?app=<id>`, body = module source) swaps the code of
   running objects on their next request. Data is kept, and open WebSockets close with 1012 so
   clients reconnect to the new code.

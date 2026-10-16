@@ -14,6 +14,9 @@ export const BINDINGS: BindingManifest = {
   "ECHO": {
     "kind": "service"
   },
+  "MODERATOR": {
+    "kind": "service"
+  },
   "GREETING": {
     "kind": "var",
     "value": "hello from a wrangler var"
@@ -32,6 +35,12 @@ export const BINDINGS: BindingManifest = {
   },
   "BIND": {
     "kind": "pool:bind"
+  },
+  "ROOMS": {
+    "kind": "pool:room"
+  },
+  "LOBBY": {
+    "kind": "pool:lobby"
   },
   "APPS": {
     "kind": "pool:app"

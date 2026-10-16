@@ -21,6 +21,8 @@ and a Yjs editor), each with a backend switch, plus a pool dashboard.
 > - snapshot sleep/wake
 > - Dynamic Workers + facets, with hot code swaps
 > - a sandboxed process per tenant app for untrusted code
+> - bindings from pooled objects: KV, R2, Workers AI, other Workers and other DOs, with the same code
+>   ([docs/bindings.md](docs/bindings.md); example: [AI chat rooms](https://do-pool-v2.do-pool-lab.workers.dev/rooms.html))
 >
 > An API parity suite runs the same assertions against real DOs, pooled DOs, real facets and pooled
 > facets. Preview: https://do-pool-v2.do-pool-lab.workers.dev. Try the dynamic-app

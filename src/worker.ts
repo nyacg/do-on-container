@@ -2,7 +2,7 @@ import { CLASSES, isClassSlug, type ClassSlug } from "../objects";
 import type { Env } from "./env";
 import { CONFORMANCE_APP } from "../objects/generated/conformance-app";
 
-export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl, BindingsDemo } from "../objects";
+export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl, BindingsDemo, AiRoom, Lobby } from "../objects";
 export { ContainerProxy } from "@cloudflare/containers";
 // v1 (live deployment) runs the pool in this script; v2 runs it in src/control.ts.
 export { PoolNode } from "./pool-node";
@@ -199,7 +199,7 @@ export default {
     if (backend === "api") return api(req, env, rest);
     if (backend === "do" || backend === "pool") {
       const [cls, name] = rest;
-      if (!cls || !isClassSlug(cls) || !name) return new Response("usage: /{do|pool}/{cursors|doc|ticker|conf|bind|app}/{name}", { status: 400 });
+      if (!cls || !isClassSlug(cls) || !name) return new Response("usage: /{do|pool}/{cursors|doc|ticker|conf|bind|room|lobby|app}/{name}", { status: 400 });
       let r: Request | Response = req;
       if (cls === "app" || cls === "sapp") {
         r = await withAppCode(req, env, name);

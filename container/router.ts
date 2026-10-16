@@ -12,7 +12,7 @@ import { appOfKey, byTenant, fanOut, fromTenantKey, tenantFetch, tenantFetcher, 
 
 export { TenantBridge } from "./tenants";
 
-export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl, BindingsDemo } from "../objects";
+export { CursorRoom, YDoc, Ticker, Conformance, FacetHost, FacetCtl, BindingsDemo, AiRoom, Lobby } from "../objects";
 
 interface Env extends PoolEnv, TenantEnv {
   CURSORS: DurableObjectNamespace;
@@ -20,6 +20,8 @@ interface Env extends PoolEnv, TenantEnv {
   TICKER: DurableObjectNamespace;
   CONF: DurableObjectNamespace;
   BIND: DurableObjectNamespace;
+  ROOMS: DurableObjectNamespace;
+  LOBBY: DurableObjectNamespace;
   APPS: DurableObjectNamespace;
   STATS: Fetcher;
   NODE_NAME: string;

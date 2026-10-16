@@ -4,6 +4,7 @@ const LINKS: [string, string][] = [
   ["/how.html", "How it works"],
   ["/bench.html", "Benchmarks & limits"],
   ["/apps.html", "Dynamic apps"],
+  ["/rooms.html", "AI rooms"],
   ["/cursors.html?backend=pool", "Cursors"],
   ["/editor.html?backend=pool", "Editor"],
 ];
