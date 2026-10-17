@@ -5,8 +5,8 @@
   <section class="hero">
     <p class="eyebrow">Bindings example</p>
     <h1>An AI chat room, written as a plain Durable Object</h1>
-    <p>Each room is one Durable Object. It runs every message through a moderation Worker, answers <code>@ai …</code> with
-      Workers AI (cached in KV), keeps attachments in R2, and reports to a Lobby Durable Object. Run it as a real DO
+    <p>Each room is one Durable Object. It runs every message through a moderation Worker, answers with
+      Workers AI (when you start with <code>@ai</code>, or when you're alone in the room; repeat questions come from KV), keeps attachments in R2, and reports to a Lobby Durable Object. Run it as a real DO
       or pooled in a container: the code is the same, and so are the calls. Under each message you can see which bindings it used and how long each call took.</p>
   </section>
 
@@ -54,7 +54,7 @@ await this.env.FILES.put(id, bytes);</pre>
       <div id="typing" class="note typing"></div>
       <form id="send" class="req composer">
         <input id="name" size="10" title="your name">
-        <input id="msg" class="grow" placeholder="Say something, or start with @ai to ask the AI" autocomplete="off">
+        <input id="msg" class="grow" placeholder="Say something. Alone, the AI answers everything; with others, start with @ai" autocomplete="off">
         <label class="btn attach" title="attach a file (≤ 1 MB)">📎<input id="file" type="file" hidden></label>
         <button class="btn primary">Send</button>
       </form>

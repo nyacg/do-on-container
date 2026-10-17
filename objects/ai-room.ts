@@ -6,8 +6,9 @@ import { PortableDurableObject, type PoolEnv } from "./portable";
  * the pool every `this.env.*` call below goes through the bridge, on Cloudflare they're native.
  *
  *   MODERATOR  another Worker's named entrypoint (JS RPC): cleans up every message
- *   AI         Workers AI: answers messages that start with "@ai"
- *   KV         caches AI answers by question
+ *   AI         Workers AI: answers messages that start with "@ai" (or every message, when
+ *              you're alone in the room)
+ *   KV         caches AI answers per room and question
  *   FILES      R2: attachments
  *   LOBBY      another Durable Object: occupancy + last message, and the global AI budget
  *
@@ -95,7 +96,9 @@ export class AiRoom extends PortableDurableObject<RoomEnv> {
     const trace: Trace = [];
     const clean = await timed(trace, "MODERATOR.moderate()", () => this.env.MODERATOR.moderate(text), (r) => (r.flagged ? "masked" : "ok"));
     this.post({ kind: "text", name, text: clean.text, trace });
-    if (/^@ai\b/i.test(clean.text)) await this.askAi(ws, clean.text.replace(/^@ai\b[:,]?\s*/i, ""));
+    // "@ai …" asks the AI; if nobody else is here, it answers everything.
+    const mentioned = /^@ai\b/i.test(clean.text);
+    if (mentioned || this.users().length <= 1) await this.askAi(ws, clean.text.replace(/^@ai\b[:,]?\s*/i, ""));
   }
 
   async webSocketClose(ws: WebSocket, code: number) {
@@ -116,7 +119,8 @@ export class AiRoom extends PortableDurableObject<RoomEnv> {
     this.broadcast({ type: "typing", name: "ai" });
     const trace: Trace = [];
     try {
-      const key = `ai/${MODEL}/${PROMPT_VERSION}/${await sha256(question.toLowerCase().trim())}`;
+      // Per room: answers depend on the room's conversation, and a new room should get a fresh one.
+      const key = `ai/${MODEL}/${PROMPT_VERSION}/${await sha256(`${this.doName}\n${question.toLowerCase().trim()}`)}`;
       let answer = await timed(trace, "KV.get()", () => this.env.KV.get(key), (v) => (v ? "hit" : "miss"));
       if (!answer) {
         const budget = await timed(trace, "LOBBY.takeAiBudget()", () => this.env.LOBBY.getByName(this.lobbyName()).takeAiBudget(), (b) => `${b.used}/${b.limit} today`);

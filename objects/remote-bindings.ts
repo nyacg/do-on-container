@@ -36,13 +36,16 @@ async function invoke(env: PoolEnv, binding: string, chain: Step[]) {
  * pipelining, nothing in the middle needs awaiting).
  */
 function recorder(env: PoolEnv, binding: string, kind: BindingKind, chain: Step[]): any {
+  // Sent once, on the first then/catch/finally: awaiting the same call twice (or a library
+  // probing `.then`) must not repeat it, just as a Workers RPC promise runs once.
+  let sent: Promise<unknown> | undefined;
   return new Proxy(function () {}, {
     get(_t, prop) {
       if (typeof prop === "symbol") return undefined;
       if (prop === "then" || prop === "catch" || prop === "finally") {
         if (!chain.length) return undefined; // the binding object itself isn't awaitable
-        const p = invoke(env, binding, chain);
-        return (p as any)[prop].bind(p);
+        sent ??= invoke(env, binding, chain);
+        return (sent as any)[prop].bind(sent);
       }
       // DurableObjectNamespace id helpers are local and synchronous, as on Cloudflare.
       if (!chain.length && (kind === "do" || kind.startsWith("pool:")) && DO_LOCAL.has(prop)) {

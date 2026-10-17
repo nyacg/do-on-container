@@ -122,7 +122,7 @@ function connect() {
       if (m.type === "history") {
         for (const x of m.messages as Msg[]) add(x); // after a reconnect, only what we missed (ids dedupe)
         joined = true;
-        if (!log.children.length) system(`New room. Say hi, or ask "@ai what is a Durable Object?"`);
+        if (!log.children.length) system(`New room. While you're alone, the AI answers everything. With others here, start a message with @ai.`);
       } else if (m.type === "msg") {
         $("typing").textContent = "";
         add(m);

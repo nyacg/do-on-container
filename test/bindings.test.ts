@@ -94,7 +94,7 @@ for (const backend of BACKENDS) {
 
 /** The AI rooms example (objects/ai-room.ts + objects/lobby.ts, web/public/rooms.html). */
 function join(backend: string, room: string, name: string) {
-  return new Promise<{ ws: WebSocket; next: (pred: (m: any) => boolean) => Promise<any> }>((resolve, reject) => {
+  return new Promise<{ ws: WebSocket; next: (pred: (m: any) => boolean) => Promise<any>; has: (pred: (m: any) => boolean) => boolean }>((resolve, reject) => {
     const ws = new WebSocket(`${BASE.replace(/^http/, "ws")}/${backend}/room/${room}/ws?name=${name}`, { perMessageDeflate: false });
     const messages: any[] = [];
     const waiters: [(m: any) => boolean, (m: any) => void][] = [];
@@ -110,7 +110,7 @@ function join(backend: string, room: string, name: string) {
         const t = setTimeout(() => rej(new Error("timed out waiting for a room message")), 30_000);
         waiters.push([pred, (m) => (clearTimeout(t), messages.splice(messages.indexOf(m), 1), res(m))]);
       });
-    ws.on("open", () => resolve({ ws, next }));
+    ws.on("open", () => resolve({ ws, next, has: (pred) => messages.some(pred) }));
     ws.on("error", reject);
     ws.on("unexpected-response", (_q, r) => reject(new Error(`ws HTTP ${r.statusCode}`)));
   });
@@ -136,14 +136,17 @@ for (const backend of BACKENDS) {
       await get(backend, "warm", "var"); // node up
       const alice = await joinT(room, "alice");
       assert.equal((await alice.next((m) => m.type === "history")).messages.length, 0);
-      alice.ws.send(JSON.stringify({ text: "what a darn  good   demo" }));
-      const m = await alice.next((m) => m.type === "msg");
-      assert.equal(m.text, "what a d*** good demo");
-      assert.deepEqual(calls(m), ["MODERATOR.moderate()"]);
       const bob = await joinT(room, "bob");
       const p = await alice.next((m) => m.type === "presence" && m.users.length === 2);
       assert.deepEqual(p.users.sort(), ["alice", "bob"]);
       assert.deepEqual(calls(p), ["LOBBY.update()"]);
+      // Two people here: a plain message is just a message (no AI).
+      alice.ws.send(JSON.stringify({ text: "what a darn  good   demo" }));
+      const m = await bob.next((m) => m.type === "msg");
+      assert.equal(m.text, "what a d*** good demo");
+      assert.deepEqual(calls(m), ["MODERATOR.moderate()"]);
+      await sleep(2000);
+      assert.ok(!alice.has((m) => m.type === "msg" && m.kind === "ai"), "no AI reply without @ai when others are here");
       const lobby = await (await fetch(`${BASE}/${backend}/lobby/tests`)).json(); // t-… rooms report here
       assert.equal(lobby.pooled, backend === "pool");
       assert.equal(lobby.rooms.find((r: any) => r.name === room)?.users, 2);
@@ -156,6 +159,15 @@ for (const backend of BACKENDS) {
         users = (await (await fetch(`${BASE}/${backend}/lobby/tests`)).json()).rooms.find((r: any) => r.name === room)?.users;
       }
       assert.equal(users, 0, "room empty in the lobby once everyone left");
+    });
+
+    test("alone in a room: the AI answers a plain message", async () => {
+      const alice = await joinT(`${room}-solo`, "alice");
+      await alice.next((m) => m.type === "history");
+      alice.ws.send(JSON.stringify({ text: `say pong ${RUN}` }));
+      const a = await alice.next((m) => m.type === "msg" && m.kind === "ai");
+      assert.ok(a.text.length > 0);
+      assert.deepEqual(calls(a), ["KV.get()", "LOBBY.takeAiBudget()", "AI.run()", "KV.put()"]);
     });
 
     test("@ai: Workers AI answer, then the same question from KV", async () => {
