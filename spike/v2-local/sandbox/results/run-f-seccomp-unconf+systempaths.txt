@@ -1,0 +1,69 @@
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=0
+-- [none] shell: uid=0 cat_t2=[secret-of-t2] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [none] workerd OK first_req=31ms resp={"tenant":"t1","count":3} Uid:0 NSpid:55 CapEff:00000000a80425fb NoNewPrivs:0 Seccomp:0  mntns=shared netns=shared userns=shared wrapper=[workerd/root/rss=56732k ]
+   [none] disk-escape t2: status=200 secret-of-t2 
+   [none] disk own t1:    status=200 secret-of-t1 
+   [none] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [setpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: Permission denied] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [setpriv] workerd OK first_req=28ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:156 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[workerd/t1/rss=56752k ]
+   [setpriv] disk-escape t2: status=404 Not Found
+   [setpriv] disk own t1:    status=200 secret-of-t1 
+   [setpriv] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-root] shell: unshare: unshare failed: Operation not permitted 
+   [unshare-root] workerd FAILED after 4ms: unshare: unshare failed: Operation not permitted 
+-- [unshare-userns] shell: mount: /tenants/t1: filesystem was mounted, but failed to update userspace mount table. uid=0 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533628,4026533630,4026533627,4026533629, 
+   [unshare-userns] workerd OK first_req=25ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:300,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[unshare/t1/rss=884k workerd/t1/rss=56780k ]
+   [unshare-userns] disk-escape t2: status=404 Not Found
+   [unshare-userns] disk own t1:    status=200 secret-of-t1 
+   [unshare-userns] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [bwrap] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc sbin tenants tmp usr ] pids_visible=5 ns=4026533504,4026533509,4026533765,4026533507, 
+   [bwrap] workerd OK first_req=31ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:414,2 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[bwrap/t1/rss=1648k bwrap/t1/rss=1220k workerd/t1/rss=56720k ]
+   [bwrap] disk-escape t2: status=404 Not Found
+   [bwrap] disk own t1:    status=200 secret-of-t1 
+   [bwrap] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"symlink"},{"name":"proc","type":"directory"},{"name":"sbin","type"
+-- [bwrap-suid] shell: bwrap: capset failed: Operation not permitted 
+   [bwrap-suid] workerd FAILED after 5ms: bwrap: capset failed: Operation not permitted 
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533509,4026533503,4026533507, 
+   [nsjail] workerd OK first_req=25ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:560,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=own userns=own wrapper=[nsjail/root/rss=6624k workerd/t1/rss=56560k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [nsjail-nouserns] shell: 
+   [nsjail-nouserns] workerd FAILED after 5ms: 
+   [nsjail-nouserns] nsjail log: [W][2026-10-16T00:40:21+0000][635] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:21+0000][635] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:21+0000][640] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:21+0000][640] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533509,4026533503,4026533507, 
+   [nsjail-unpriv] workerd OK first_req=24ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:712,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[nsjail/t1/rss=6496k workerd/t1/rss=56784k ]
+   [nsjail-unpriv] disk-escape t2: status=404 Not Found
+   [nsjail-unpriv] disk own t1:    status=200 secret-of-t1 
+   [nsjail-unpriv] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+
+## NET=share
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=share NSJ_SECCOMP=0
+-- [bwrap] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc sbin tenants tmp usr ] pids_visible=5 ns=4026533504,4026533373,4026533509,4026533507, 
+   [bwrap] workerd OK first_req=34ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:831,2 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[bwrap/t1/rss=1648k bwrap/t1/rss=1092k workerd/t1/rss=56692k ]
+   [bwrap] disk-escape t2: status=404 Not Found
+   [bwrap] disk own t1:    status=200 secret-of-t1 
+   [bwrap] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"symlink"},{"name":"proc","type":"directory"},{"name":"sbin","type"
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533373,4026533503,4026533507, 
+   [nsjail] workerd OK first_req=30ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:933,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=own netns=shared userns=own wrapper=[nsjail/root/rss=6624k workerd/t1/rss=56680k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [unshare-root] shell: unshare: unshare failed: Operation not permitted 
+   [unshare-root] workerd FAILED after 6ms: unshare: unshare failed: Operation not permitted 
+
+## NSJ_SECCOMP=1
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=1
+-- [nsjail] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533509,4026533503,4026533507, 
+   [nsjail] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1082,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=own netns=own userns=own wrapper=[nsjail/root/rss=6624k workerd/t1/rss=54672k ]
+   [nsjail] disk-escape t2: status=404 Not Found
+   [nsjail] disk own t1:    status=200 secret-of-t1 
+   [nsjail] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"
+-- [nsjail-unpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin dev etc lib proc tenants tmp usr ] pids_visible=4 ns=4026533504,4026533509,4026533503,4026533507, 
+   [nsjail-unpriv] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:1190,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[nsjail/t1/rss=6484k workerd/t1/rss=56736k ]
+   [nsjail-unpriv] disk-escape t2: status=404 Not Found
+   [nsjail-unpriv] disk own t1:    status=200 secret-of-t1 
+   [nsjail-unpriv] disk ls /:      status=200 [{"name":"bin","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"lib","type":"directory"},{"name":"proc","type":"directory"},{"name":"tenants"

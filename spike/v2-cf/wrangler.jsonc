@@ -1,0 +1,18 @@
+{
+  "name": "do-pool-v2-spike",
+  "main": "index.js",
+  "compatibility_date": "2026-10-15",
+  "compatibility_flags": ["enable_ctx_exports"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "containers": [
+    {
+      "class_name": "Node",
+      "scheduling_policy": "durable_object",
+      "images": { "node": { "dockerfile": "./image/Dockerfile" } }
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "NODE", "class_name": "Node" }, { "name": "FACET", "class_name": "FacetHost" }] },
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Node"] }, { "tag": "v2", "new_sqlite_classes": ["FacetHost"] }]
+}

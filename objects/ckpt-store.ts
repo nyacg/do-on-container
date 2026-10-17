@@ -6,7 +6,7 @@
  * container. Instead each flush writes:
  *
  *   seg/<node>/<ts>      all dirty snapshots concatenated (one PUT)
- *   manifest/<node>      key → [segment, offset, length, at] for every object this node has
+ *   manifest/<node>      key → [segment, offset, length, at, alarm] for every object this node has
  *                        checkpointed (one PUT)
  *
  * Hydration looks a key up across all node manifests (newest `at` wins) and does a ranged
@@ -22,7 +22,9 @@ export function bridgeFetch(env: PoolEnv, path: string, init?: RequestInit) {
   return env.__BRIDGE ? env.__BRIDGE.fetch(url, init) : fetch(url, init);
 }
 
-type Entry = [seg: string, off: number, len: number, at: number];
+/** `alarm` = the object's pending alarm when it was checkpointed (lets Placement recover alarms
+ *  of objects on a node that died without draining). */
+export type Entry = [seg: string, off: number, len: number, at: number, alarm?: number | null];
 interface Manifest {
   node: string;
   entries: Record<string, Entry>;
@@ -105,7 +107,7 @@ export async function readSnapshot(env: PoolEnv, key: string): Promise<ArrayBuff
 export async function writeSegment(
   env: PoolEnv,
   node: string,
-  items: { key: string; bytes: ArrayBuffer }[],
+  items: { key: string; bytes: ArrayBuffer; alarm?: number | null }[],
 ): Promise<{ seg: string; bytes: number }> {
   if (!cache.own) {
     const r = await bridgeFetch(env, `/blob/manifest/${node}`);
@@ -117,9 +119,9 @@ export async function writeSegment(
   const body = new Uint8Array(total);
   const entries: [string, Entry][] = [];
   let off = 0;
-  for (const { key, bytes } of items) {
+  for (const { key, bytes, alarm } of items) {
     body.set(new Uint8Array(bytes), off);
-    entries.push([key, [seg, off, bytes.byteLength, at]]);
+    entries.push([key, [seg, off, bytes.byteLength, at, alarm ?? null]]);
     off += bytes.byteLength;
   }
   const put = await bridgeFetch(env, `/blob/${seg}`, { method: "PUT", body });

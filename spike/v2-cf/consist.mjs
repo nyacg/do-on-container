@@ -1,0 +1,22 @@
+const B = "https://do-pool-v2-spike.do-pool-lab.workers.dev";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rf = globalThis.fetch;
+globalThis.fetch = async (...a) => { for (let i = 0; ; i++) { try { return await rf(...a); } catch (e) { if (i >= 3) throw e; await sleep(500); } } };
+const j = async (u) => { const r = await fetch(B + u); const t = await r.text(); try { return JSON.parse(t); } catch { return { raw: t.slice(0, 200), status: r.status }; } };
+const name = "consist2-" + Date.now().toString(36);
+console.log("start", JSON.stringify(await j(`/n/${name}/start?hint=wnam&instance=standard-1`)).slice(0, 160));
+let stop = false, writes = 0, errs = 0;
+const writer = (async () => { while (!stop) { const r = await fetch(`${B}/n/${name}/p/r/w${writes % 20}/touch?hint=wnam`); await r.text(); r.ok ? writes++ : errs++; } })();
+await sleep(2000);
+const snap = await j(`/n/${name}/snapshot?hint=wnam`);
+console.log("snapshot", JSON.stringify(snap).slice(0, 200));
+await sleep(1000); stop = true; await writer;
+console.log("writes", writes, "errs", errs);
+console.log("stop", JSON.stringify(await j(`/n/${name}/stop?hint=wnam`)));
+console.log("inspect", JSON.stringify(await j(`/n/${name}/inspect?hint=wnam`)).slice(0, 120));
+const restore = await j(`/n/${name}/start?hint=wnam&instance=standard-1&from=container`);
+console.log("restore", JSON.stringify(restore).slice(0, 300));
+let ok = 0, bad = [], ns = [];
+for (let i = 0; i < 20; i++) { const r = await fetch(`${B}/n/${name}/p/r/w${i}/touch?hint=wnam`); const t = await r.text(); if (r.ok) { ok++; ns.push(JSON.parse(t).n); } else bad.push(t.slice(0, 120)); }
+console.log(JSON.stringify({ dbsOpenAfterRestore: ok, counts: ns, bad: bad.slice(0, 2) }));
+await j(`/n/${name}/stop?hint=wnam&kill=1`);

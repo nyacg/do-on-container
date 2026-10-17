@@ -9,17 +9,25 @@ CKPT_INTERVAL=${CKPT_INTERVAL:-30}
 NODE_NAME=${NODE_NAME:-local}
 export NODE_NAME
 ulimit -n 65536 2>/dev/null || true
-mkdir -p /stats /data
+# Runtime state never survives a restart — but a filesystem snapshot (sleep/wake) or a reused
+# disk would bring back stale sockets and markers: start clean.
+rm -rf /run/spawnq /run/bridges /run/slots
+mkdir -p /stats /data /data/tenants /run/spawnq /run/bridges
+for i in $(seq 0 31); do mkdir -p /run/slots/$i; done
 
 # Lower priority than this script, so stats keep flowing to Placement even when workerd
 # saturates the CPU (a silent node looks dead).
-nice -n 10 workerd serve /app/workerd.capnp --experimental &
+nice -n 10 workerd serve /app/dist/workerd.capnp --experimental &
 WPID=$!
+# Tenant sandboxes connect to their bridge socket as their own uid.
+( for i in $(seq 1 100); do [ -S /run/bridges/31.sock ] && break; sleep 0.05; done; chmod 666 /run/bridges/*.sock ) &
+/app/spawner.sh > /stats/spawner.log 2>&1 &
 
 drain() {
   echo "[supervisor] SIGTERM: draining"
-  curl -sS -m 600 -X POST http://127.0.0.1:8080/__drain
-  echo
+  curl -sS -m 600 -X POST http://127.0.0.1:8080/__drain > /stats/drain.json
+  cat /stats/drain.json; echo
+  curl -s -m 10 -X POST --data-binary @/stats/drain.json http://bridge.internal/drained >/dev/null 2>&1
   kill -TERM $WPID 2>/dev/null
   wait $WPID
   exit 0

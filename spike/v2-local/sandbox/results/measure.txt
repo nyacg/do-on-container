@@ -1,0 +1,74 @@
+approach=none N=1 first-request latency per instance: 276ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+workerd  root   20          54692     16596     38096     53556     16704     36852
+TOTAL kB: VmRSS=54692 PSS=53556  cgroup memory.current delta=78796 kB
+
+approach=none N=5 first-request latency per instance: 85ms 94ms 71ms 73ms 62ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+workerd  root   81          54540     16552     37988     24251     16748      7503
+workerd  root   111         55364     16532     38832     24311     16684      7627
+workerd  root   141         55456     16624     38832     24403     16776      7627
+workerd  root   175         55328     16496     38832     24295     16668      7627
+workerd  root   209         55304     16484     38820     24262     16636      7626
+TOTAL kB: VmRSS=275992 PSS=121522  cgroup memory.current delta=148264 kB
+
+approach=setpriv N=1 first-request latency per instance: 85ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+workerd  t1     326         54620     16524     38096     53544     16692     36852
+TOTAL kB: VmRSS=54620 PSS=53544  cgroup memory.current delta=77380 kB
+
+approach=setpriv N=5 first-request latency per instance: 73ms 35ms 24ms 31ms 23ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+workerd  t1     384         54480     16456     38024     24134     16632      7502
+workerd  t2     413         55300     16468     38832     24251     16624      7627
+workerd  t3     444         55296     16464     38832     24251     16624      7627
+workerd  t4     473         55256     16476     38780     24255     16628      7627
+workerd  t5     504         55576     16748     38828     24523     16896      7627
+TOTAL kB: VmRSS=275908 PSS=121414  cgroup memory.current delta=149272 kB
+
+approach=bwrap N=1 first-request latency per instance: 74ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+bwrap    t1     618          1632       128      1504       433        96       337
+bwrap    t1     626          1220       136      1084       254       116       138
+workerd  t1     627         54560     16464     38096     53482     16640     36842
+TOTAL kB: VmRSS=57412 PSS=54169  cgroup memory.current delta=78464 kB
+
+approach=bwrap N=5 first-request latency per instance: 58ms 25ms 22ms 32ms 24ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+bwrap    t1     712          1632       128      1504       194        96        98
+bwrap    t1     720          1220       136      1084       168       116        52
+workerd  t1     721         54652     16496     38156     24137     16656      7481
+bwrap    t2     749          1632       128      1504       192        94        98
+bwrap    t2     758          1220       136      1084       166       114        52
+workerd  t2     759         55288     16468     38820     24224     16620      7604
+bwrap    t3     784          1632       128      1504       192        94        98
+bwrap    t3     793          1216       132      1084       166       114        52
+workerd  t3     794         55296     16464     38832     24229     16624      7605
+bwrap    t4     819          1632       128      1504       192        94        98
+bwrap    t4     828          1216       132      1084       166       114        52
+workerd  t4     829         55488     16656     38832     24417     16812      7605
+bwrap    t5     854          1632       128      1504       192        94        98
+bwrap    t5     863          1216       132      1084       166       114        52
+workerd  t5     864         55460     16632     38828     24393     16788      7605
+TOTAL kB: VmRSS=290432 PSS=123194  cgroup memory.current delta=153036 kB
+
+approach=nsjail N=1 first-request latency per instance: 81ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+nsjail   root   1114         6512       640      5872      4467       672      3795
+workerd  t1     1120        54576     16480     38096     53470     16628     36842
+TOTAL kB: VmRSS=61088 PSS=57937  cgroup memory.current delta=83444 kB
+
+approach=nsjail N=5 first-request latency per instance: 69ms 28ms 27ms 25ms 24ms
+comm     user   pid         VmRSS   RssAnon   RssFile       Pss  Pss_Anon  Pss_File
+nsjail   root   1191         6512       640      5872      1582       676       906
+workerd  t1     1197        54308     16424     37884     24114     16632      7482
+nsjail   root   1225         6596       640      5956      1583       672       911
+workerd  t2     1232        55340     16508     38832     24270     16664      7606
+nsjail   root   1257         6600       640      5960      1584       672       912
+workerd  t3     1264        55376     16544     38832     24306     16700      7606
+nsjail   root   1289         6600       640      5960      1584       672       912
+workerd  t4     1296        55292     16468     38824     24238     16632      7606
+nsjail   root   1321         6600       640      5960      1584       672       912
+workerd  t5     1328        55300     16472     38828     24234     16628      7606
+TOTAL kB: VmRSS=308524 PSS=129079  cgroup memory.current delta=158492 kB
+
