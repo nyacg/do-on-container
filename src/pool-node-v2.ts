@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
 import type { DrainResult } from "./pool-node";
+import type { EvictionResult } from "../objects/pool-protocol";
 
 /**
  * v2 pool node on the native `ctx.container` API with `scheduling_policy: "durable_object"`:
@@ -80,8 +81,8 @@ export class PoolNodeV2 extends DurableObject<Env> {
 
   async evict(
     items: { key: string; epoch: number }[],
-  ): Promise<{ evicted: number; seg?: string | null; alarms?: { key: string; at: number }[] }> {
-    if (!this.ctx.container?.running || !items.length) return { evicted: items.length };
+  ): Promise<EvictionResult> {
+    if (!this.ctx.container?.running || !items.length) return { evicted: items.length, evictedKeys: items.map((i) => i.key) };
     return (await this.admin("/__evict", { method: "POST", body: JSON.stringify(items) })).json();
   }
 

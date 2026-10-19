@@ -63,6 +63,7 @@ async function toPooled(env: Env, slug: string, chain: Step[]): Promise<Response
   for (let attempt = 0; ; attempt++) {
     const p = await resolve(env, key, attempt > 0);
     const headers = new Headers(original?.headers);
+    headers.delete("x-do-call"); // fetch headers are application data, not RPC dispatch
     headers.set("x-do-class", slug);
     headers.set("x-do-name", name);
     headers.set("x-do-epoch", String(p.epoch));

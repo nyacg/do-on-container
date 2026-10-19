@@ -86,6 +86,8 @@ async function resolveNode(env: Env, key: string, refresh = false, region?: stri
 
 function forPool(req: Request, cls: ClassSlug, name: string, { fresh, epoch }: Placed): Request {
   const headers = new Headers(req.headers);
+  // Only the bindings bridge may select internal RPC dispatch.
+  headers.delete("x-do-call");
   headers.set("x-do-class", cls);
   headers.set("x-do-name", name);
   headers.set("x-do-epoch", String(epoch));

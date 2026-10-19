@@ -13,7 +13,8 @@
     "deploy:control": "npm run build && wrangler deploy --env control",
     "publish:examples": "node scripts/publish-examples.mjs",
     "test:examples": "node --import tsx --test --test-reporter=spec test/examples.test.ts",
-    "test:bindings": "node --import tsx --test --test-reporter=spec test/bindings.test.ts"
+    "test:bindings": "node --import tsx --test --test-reporter=spec test/bindings.test.ts",
+    "test:regressions": "node --import tsx --test --test-reporter=spec test/regressions.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261015.1",

@@ -174,6 +174,7 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
   async poolUnfreeze(): Promise<void> {
     this.poolFrozen = false;
     this.poolDrained = false;
+    poolRegistry.live.set(this.poolKey, new WeakRef(this));
   }
 
   /**

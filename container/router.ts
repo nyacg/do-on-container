@@ -7,6 +7,7 @@
 import { CLASSES, isClassSlug, poolKey, poolRegistry, type ClassSlug } from "../objects";
 import { writeSegment } from "../objects/ckpt-store";
 import { applyChain, encode, type Step } from "../objects/rpc-wire";
+import { confirmedEvictions, type EvictionResult } from "../objects/pool-protocol";
 import type { PoolEnv } from "../objects/portable";
 import { appOfKey, byTenant, fanOut, fromTenantKey, tenantFetch, tenantFetcher, tenants, toTenantKey, type TenantEnv } from "./tenants";
 
@@ -35,6 +36,8 @@ let startedAt = 0; // Date.now() is frozen at 0 in global scope; set on first re
  * the object back to this node, which lifts the fence.
  */
 const moved = new Map<string, number>();
+// Include RPC response encoding: a handoff must wait for the entire call to finish.
+const inflight = new Map<string, number>();
 let draining = false;
 let requests = 0;
 
@@ -54,23 +57,25 @@ function stubFor(env: Env, key: string): PoolStub {
 }
 
 /**
- * Collect snapshots from `keys` (via `take`) and write them as one segment.
- * Objects whose snapshot couldn't be written are marked dirty again.
- */
-/**
  * Move objects off this node: they're already fenced (410 for new requests), so close their
  * sockets, then snapshot them into one segment. Only once this returns may Placement point
  * the keys at another node.
  */
 async function moveOut(env: Env, keys: string[], reason: string) {
-  await Promise.all(keys.map((k) => stubFor(env, k).poolClose(reason).catch(() => {})));
-  return checkpoint(env, keys, (s) => s.poolSnapshot());
+  return checkpoint(env, keys, async (s, key) => {
+    for (let waited = 0; inflight.has(key) && waited < 10_000; waited += 10) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (inflight.has(key)) throw new Error("object still has in-flight requests");
+    await s.poolClose(reason);
+    return s.poolSnapshot();
+  });
 }
 
 async function checkpoint(
   env: Env,
   keys: string[],
-  take: (stub: PoolStub) => Promise<{ bytes: ArrayBuffer; alarm: number | null }>,
+  take: (stub: PoolStub, key: string) => Promise<{ bytes: ArrayBuffer; alarm: number | null }>,
 ) {
   const t0 = Date.now();
   const items: { key: string; bytes: ArrayBuffer; alarm: number | null }[] = [];
@@ -80,8 +85,9 @@ async function checkpoint(
     Array.from({ length: Math.min(16, queue.length) }, async () => {
       for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
         try {
-          items.push({ key, ...(await take(stubFor(env, key))) });
+          items.push({ key, ...(await take(stubFor(env, key), key)) });
         } catch (e) {
+          poolRegistry.dirty.add(key);
           errors.push(`${key}: ${String(e).slice(0, 160)}`);
         }
       }
@@ -102,8 +108,9 @@ async function checkpoint(
   }
   // Pending alarms of the checkpointed objects: Placement's registry takes these over when the
   // objects leave this node (drain, evict, sleep), so they still fire on time.
-  const alarms = items.filter((i) => i.alarm).map((i) => ({ key: i.key, at: i.alarm as number }));
-  return { objects: items.length, seg, alarms, failed: errors.length, errors: errors.slice(0, 5), ms: Date.now() - t0 };
+  const persistedKeys = seg ? items.map((i) => i.key) : [];
+  const alarms = seg ? items.filter((i) => i.alarm).map((i) => ({ key: i.key, at: i.alarm as number })) : [];
+  return { objects: items.length, seg, persistedKeys, alarms, failed: errors.length, errors: errors.slice(0, 5), ms: Date.now() - t0 };
 }
 
 function liveKeys() {
@@ -156,7 +163,8 @@ async function admin(url: URL, req: Request, env: Env): Promise<Response> {
       const local = await moveOut(env, keys, "node draining");
       const t = await fanOut(env, "/__drain", { method: "POST" });
       const alarms = [...local.alarms, ...t.flatMap((x) => mapAlarms(x.body.alarms))];
-      return Response.json({ keys: keys.length, ...local, alarms, tenants: t.length });
+      const failed = local.failed + t.filter((x) => !x.ok || x.body.failed).length;
+      return Response.json({ keys: keys.length, ...local, failed, alarms, tenants: t.length });
     }
     case "/__undrain":
       draining = false;
@@ -166,36 +174,42 @@ async function admin(url: URL, req: Request, env: Env): Promise<Response> {
       const items = (await req.json()) as { key: string; epoch: number }[];
       for (const { key, epoch } of items) moved.set(key, epoch);
       const keys = items.filter((i) => !i.key.startsWith("sapp/")).map((i) => i.key);
-      let evicted = 0;
+      const evictedKeys: string[] = [];
       let seg: string | null = null;
       const alarms: Alarm[] = [];
       const errors: string[] = [];
       if (keys.length) {
         const r = await moveOut(env, keys, "moved");
-        if (r.failed && !r.seg) {
-          // nothing persisted: keep serving here
-          for (const k of keys) moved.delete(k);
-          await Promise.all(keys.map((k) => stubFor(env, k).poolUnfreeze().catch(() => {})));
-          errors.push(...r.errors);
-        } else {
-          await Promise.all(keys.map((k) => stubFor(env, k).poolRetire().catch(() => {}))); // abort() rejects the call
-          evicted += keys.length;
-          seg = r.seg;
-          alarms.push(...r.alarms);
-        }
+        const persisted = new Set(r.persistedKeys);
+        const failed = keys.filter((k) => !persisted.has(k));
+        for (const k of failed) moved.delete(k);
+        await Promise.all(failed.map((k) => stubFor(env, k).poolUnfreeze().catch(() => {})));
+        await Promise.all(r.persistedKeys.map((k) => stubFor(env, k).poolRetire().catch(() => {}))); // abort() rejects the call
+        evictedKeys.push(...r.persistedKeys);
+        seg = r.seg;
+        alarms.push(...r.alarms);
+        errors.push(...r.errors);
       }
       for (const [app, group] of byTenant(items)) {
-        const res = await (await tenantFetcher(env, app)).fetch("http://tenant/__evict", {
-          method: "POST",
-          body: JSON.stringify(group.map((g) => ({ ...g, key: toTenantKey(g.key) }))),
-        });
-        const r = (await res.json()) as { evicted: number; alarms?: Alarm[]; errors?: string[] };
-        if (!r.evicted) for (const g of group) moved.delete(g.key);
-        evicted += r.evicted;
-        alarms.push(...mapAlarms(r.alarms));
-        errors.push(...(r.errors ?? []));
+        try {
+          const res = await (await tenantFetcher(env, app)).fetch("http://tenant/__evict", {
+            method: "POST",
+            body: JSON.stringify(group.map((g) => ({ ...g, key: toTenantKey(g.key) }))),
+          });
+          if (!res.ok) throw new Error(`tenant eviction: HTTP ${res.status}`);
+          const r = (await res.json()) as EvictionResult;
+          const confirmed = confirmedEvictions(r, group.map((g) => toTenantKey(g.key))).map(fromTenantKey);
+          for (const g of group) if (!confirmed.includes(g.key)) moved.delete(g.key);
+          evictedKeys.push(...confirmed);
+          alarms.push(...mapAlarms(r.alarms).filter((a) => confirmed.includes(a.key)));
+          errors.push(...(r.errors ?? []));
+        } catch (e) {
+          // The tenant may have persisted before its reply was lost. Keep its fence until a
+          // retry establishes the outcome; still return other tenants' confirmed handoffs.
+          errors.push(`${app}: ${String(e).slice(0, 160)}`);
+        }
       }
-      return Response.json({ evicted, seg, alarms, errors });
+      return Response.json({ evicted: evictedKeys.length, evictedKeys, seg, alarms, errors });
     }
     case "/__wake": {
       // Alarm registry: construct (hydrate + re-arm) these objects so their alarms fire here.
@@ -308,17 +322,24 @@ export default {
       return new Response("object moved", { status: 410, headers: { "x-pool-moved": env.NODE_NAME } });
     }
     requests++;
-    if (cls === "sapp") {
-      // Sandboxed app: hand the request to the app's own process, where it's a plain FacetHost.
-      const headers = new Headers(req.headers);
-      headers.set("x-do-class", "app");
-      return tenantFetch(env, appOfKey(key), new Request(req, { headers }));
+    inflight.set(key, (inflight.get(key) ?? 0) + 1);
+    try {
+      if (cls === "sapp") {
+        // Sandboxed app: hand the request to the app's own process, where it's a plain FacetHost.
+        const headers = new Headers(req.headers);
+        headers.set("x-do-class", "app");
+        return await tenantFetch(env, appOfKey(key), new Request(req, { headers }));
+      }
+      if (req.headers.get("x-do-fresh") === "1") poolRegistry.fresh.add(key);
+      poolRegistry.epochs.set(key, epoch);
+      const ns = env[CLASSES[cls].binding] as DurableObjectNamespace;
+      const stub = ns.get(ns.idFromName(name));
+      if (req.headers.get("x-do-call") === "1") return await call(stub, req);
+      return await stub.fetch(req);
+    } finally {
+      const remaining = inflight.get(key)! - 1;
+      if (remaining) inflight.set(key, remaining);
+      else inflight.delete(key);
     }
-    if (req.headers.get("x-do-fresh") === "1") poolRegistry.fresh.add(key);
-    poolRegistry.epochs.set(key, epoch);
-    const ns = env[CLASSES[cls].binding] as DurableObjectNamespace;
-    const stub = ns.get(ns.idFromName(name));
-    if (req.headers.get("x-do-call") === "1") return call(stub, req);
-    return stub.fetch(req);
   },
 };
