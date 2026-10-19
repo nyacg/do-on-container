@@ -18,7 +18,7 @@ import { PortableDurableObject, type PoolEnv } from "./portable";
  *   GET /ws?name=       join                     GET /history        last 50 messages
  *   POST /upload?name=&filename=   attach a file (≤ 1 MB)    GET /files/<id>    download it
  */
-const MODEL = "@cf/meta/llama-3.2-3b-instruct";
+const MODEL = "@cf/zai-org/glm-5.3-flash";
 const PROMPT_VERSION = 2; // part of the KV cache key
 const SYSTEM_PROMPT = `You are a friendly participant in a group chat on the do-pool demo site. do-pool runs
 Cloudflare Durable Objects (stateful serverless objects, each with its own SQLite database, addressed by name)
@@ -156,8 +156,8 @@ export class AiRoom extends PortableDurableObject<RoomEnv> {
               ],
               max_tokens: 120,
             }),
-          )) as { response?: string };
-          answer = (out.response ?? "").trim() || "…";
+          )) as { response?: string; choices?: { message?: { content?: string } }[] };
+          answer = (out.response ?? out.choices?.[0]?.message?.content ?? "").trim() || "…";
           const a = answer;
           await timed(trace, "KV.put()", () => this.env.KV.put(key, a, { expirationTtl: 3600 }));
         }
