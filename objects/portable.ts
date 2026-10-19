@@ -19,7 +19,18 @@ import { dumpStorage, gunzip, gzip, restoreStorage, type Snapshot } from "./stor
  *
  * Put initialisation in `onStart()` instead of the constructor: it runs after hydration.
  */
+/** Largest checkpoint a pooled object may write or a node may download (gzipped). Pooled objects
+ *  restore their whole SQLite from one snapshot, so a big object must keep bulk data elsewhere
+ *  (e.g. R2) or mark cache tables with `poolSnapshotExclude()`. */
+export const DEFAULT_MAX_SNAPSHOT_MB = 256;
+
+export function maxSnapshotBytes(env: PoolEnv) {
+  return Number(env.POOL_MAX_SNAPSHOT_MB ?? DEFAULT_MAX_SNAPSHOT_MB) * 1024 * 1024;
+}
+
 export interface PoolEnv {
+  /** Override for DEFAULT_MAX_SNAPSHOT_MB. */
+  POOL_MAX_SNAPSHOT_MB?: string;
   /** Set to "1" by the container's workerd config. Absent on Cloudflare. */
   __DO_POOL?: string;
   /** Fetcher that reaches the Worker-side bindings bridge (http://bridge.internal). */
@@ -116,6 +127,15 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
     });
   }
 
+  /**
+   * Tables that are caches (rebuildable from elsewhere): their schema goes into checkpoints, their
+   * rows don't. Keeps a big local cache from turning into a big snapshot that every move and
+   * every cold node has to download.
+   */
+  protected poolSnapshotExclude(): string[] {
+    return [];
+  }
+
   /** Override for setup that needs storage (runs after hydration). */
   protected onStart(): void | Promise<void> {}
 
@@ -139,12 +159,29 @@ export abstract class PortableDurableObject<Env extends PoolEnv = PoolEnv> exten
    * into a segment (and re-marks the object dirty if that write fails).
    */
   async poolSnapshot(): Promise<{ bytes: ArrayBuffer; alarm: number | null }> {
+    const cap = maxSnapshotBytes(this.env);
+    const exclude = new Set(this.poolSnapshotExclude());
+    // Cheap early refusal: the whole database is far beyond what a snapshot may hold.
+    const size = (this.rawStorage.sql as { databaseSize?: number }).databaseSize;
+    if (!exclude.size && typeof size === "number" && size > cap * 8) throw this.tooBig(size, "database", cap);
     poolRegistry.dirty.delete(this.poolKey);
-    const snapshot = dumpStorage(this.rawStorage);
+    const snapshot = dumpStorage(this.rawStorage, { exclude });
     const alarm = await this.rawStorage.getAlarm();
     const extra = await this.poolExtraState();
     const bytes = await gzip(JSON.stringify({ v: 2, key: this.poolKey, at: Date.now(), alarm, extra, ...snapshot }));
+    if (bytes.byteLength > cap) {
+      poolRegistry.dirty.add(this.poolKey); // nothing was checkpointed
+      throw this.tooBig(bytes.byteLength, "snapshot", cap);
+    }
     return { bytes, alarm };
+  }
+
+  private tooBig(bytes: number, what: string, cap: number) {
+    const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
+    return new Error(
+      `${this.poolKey}: ${what} is ${mb(bytes)} MB, over the ${mb(cap)} MB snapshot cap (POOL_MAX_SNAPSHOT_MB). ` +
+        `Mark cache tables with poolSnapshotExclude(), or keep bulk data in R2 and fetch it on demand.`,
+    );
   }
 
   /** No-op RPC: constructing the object hydrates it and re-arms its alarm (alarm registry wake). */

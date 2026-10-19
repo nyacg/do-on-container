@@ -13,7 +13,8 @@ export interface Snapshot {
   kv: [string, unknown][];
 }
 
-export function dumpStorage(storage: DurableObjectStorage): Snapshot {
+/** `exclude`: tables whose schema is kept but whose rows aren't (caches the object rebuilds). */
+export function dumpStorage(storage: DurableObjectStorage, opts: { exclude?: ReadonlySet<string> } = {}): Snapshot {
   const sql = storage.sql;
   const schema = sql
     .exec<{ type: string; name: string; sql: string }>(
@@ -23,6 +24,7 @@ export function dumpStorage(storage: DurableObjectStorage): Snapshot {
   const tables = schema
     .filter((s) => s.type === "table")
     .map(({ name }) => {
+      if (opts.exclude?.has(name)) return { name, cols: [] as string[], rows: [] as unknown[][] };
       const cursor = sql.exec(`SELECT * FROM "${name}"`);
       return { name, cols: cursor.columnNames, rows: [...cursor.raw()].map((r) => r.map(encodeValue)) };
     });
