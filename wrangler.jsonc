@@ -4,44 +4,55 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
+  "compatibility_flags": ["enable_ctx_exports"],
   "observability": { "enabled": true },
   "assets": {
     "directory": "web/public",
     "binding": "ASSETS",
     "run_worker_first": ["/api/*", "/do/*", "/pool/*"]
   },
-  "containers": [
-    {
-      "class_name": "PoolNode",
-      "image": "./container/Dockerfile",
-      // basic = 1/4 vCPU, 1 GiB, 4 GB disk. Containers cap at 4096 inbound connections,
-      // so small instances bin-pack WebSockets better than big ones.
-      "instance_type": "basic",
-      "max_instances": 8
-    }
-  ],
   "durable_objects": {
     "bindings": [
       { "name": "CURSORS", "class_name": "CursorRoom" },
       { "name": "DOC", "class_name": "YDoc" },
       { "name": "TICKER", "class_name": "Ticker" },
-      { "name": "POOL", "class_name": "PoolNode" },
-      { "name": "PLACEMENT", "class_name": "Placement" }
+      { "name": "CONF", "class_name": "Conformance" },
+      { "name": "APPS", "class_name": "FacetHost" },
+      { "name": "BIND", "class_name": "BindingsDemo" },
+      { "name": "ROOMS", "class_name": "AiRoom" },
+      { "name": "LOBBY", "class_name": "Lobby" },
+      { "name": "POOL", "class_name": "PoolNodeV2", "script_name": "do-pool-v2-control" },
+      { "name": "PLACEMENT", "class_name": "Placement", "script_name": "do-pool-v2-control" }
     ]
   },
+  // Applied tags on the live Worker: keep in order, only append.
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["CursorRoom", "YDoc", "PoolNode", "Placement"] },
-    { "tag": "v2", "new_sqlite_classes": ["Ticker"] }
+    { "tag": "v2", "new_sqlite_classes": ["Ticker"] },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["Conformance", "FacetHost", "BindingsDemo", "AiRoom", "Lobby"],
+      "deleted_classes": ["PoolNode", "Placement"]
+    }
   ],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "version_metadata": { "binding": "VERSION" },
-  "r2_buckets": [{ "binding": "CHECKPOINTS", "bucket_name": "do-pool-checkpoints" }],
+  // Same bindings as the control env, so the real-DO arm of each class sees the same env.
+  "r2_buckets": [
+    { "binding": "CHECKPOINTS", "bucket_name": "do-pool-v2-checkpoints" },
+    { "binding": "FILES", "bucket_name": "do-pool-v2-files" }
+  ],
+  "kv_namespaces": [{ "binding": "KV", "id": "2044c117f3374ffe8be2125b036a52e2" }],
+  "ai": { "binding": "AI" },
+  "services": [
+    { "binding": "ECHO", "service": "do-pool-v2-echo" },
+    { "binding": "MODERATOR", "service": "do-pool-v2-echo", "entrypoint": "Moderator" }
+  ],
   "vars": {
-    "POOL_MIN_NODES": "1",
-    "POOL_MAX_NODES": "6",
-    "POOL_MAX_CONNS": "3500",
-    "POOL_CKPT_INTERVAL": "30"
+    "POOL_REGIONS": "1",
+    "GREETING": "hello from a wrangler var"
   },
-  // v2: two Workers, both separate from the live v1 deployment above.
+  // Top level = the live edge Worker (`npm run deploy`). Two more envs:
   //   control: pool nodes + Placement + bridge (+ container image). Deploys restart the nodes.
   //   preview: edge router, real-DO arm, app registry, static assets. Deploy freely.
   //     npx wrangler deploy --env control && npx wrangler deploy --env preview
