@@ -72,7 +72,19 @@ async function toPooled(env: Env, slug: string, chain: Step[]): Promise<Response
     const init: RequestInit = original
       ? { method: original.method, headers, body: original.body ? await original.clone().arrayBuffer() : null }
       : { method: "POST", headers: (headers.set("x-do-call", "1"), headers), body: JSON.stringify({ chain: rest }) };
-    const res = await env.POOL.getByName(p.node).fetch(original?.url ?? "http://pool/rpc", init);
+    let res: Response;
+    try {
+      res = await env.POOL.getByName(p.node).fetch(original?.url ?? "http://pool/rpc", init);
+    } catch (e) {
+      // The node's DO was reset mid-call ("no longer active", "Network connection lost"): Cloudflare
+      // marks these `retryable`. Re-resolve and retry once, as its docs recommend for DO stubs.
+      // That makes the call at-least-once, the same as a real DO caller following that advice.
+      if ((e as { retryable?: boolean }).retryable && attempt < 1) {
+        await new Promise((r) => setTimeout(r, 200));
+        continue;
+      }
+      throw e;
+    }
     // Moved, or the node is mid-move (fenced): re-resolve and retry; nothing ran on the object.
     if (res.status === 410 && res.headers.has("x-pool-moved") && attempt < 4) {
       await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));

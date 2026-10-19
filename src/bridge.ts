@@ -44,7 +44,10 @@ export async function bridge(req: Request, env: Env, ctx: { containerId: string 
   if (url.pathname === "/rpc" && req.method === "POST") return rpc(req, env);
   if (url.pathname === "/drained" && req.method === "POST") {
     // The supervisor drained on SIGTERM (platform stop): hand pending alarms to Placement.
-    const r = (await req.json()) as { alarms?: { key: string; at: number }[] };
+    // An empty or partial body means the in-container drain failed (workerd already gone):
+    // nothing to register here; Placement recovers alarms from the node's last manifest.
+    const r = (await req.json().catch(() => ({}))) as { alarms?: { key: string; at: number }[]; error?: string };
+    if (!r.alarms) console.warn(`node ${ctx.containerId}: drain report without alarms`, r.error ?? "(unparseable body)");
     await env.PLACEMENT.getByName("global").registerAlarms(r.alarms ?? []);
     return new Response("ok");
   }

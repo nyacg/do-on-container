@@ -33,7 +33,7 @@ is the room directory. Both are written as ordinary Durable Objects:
 | binding | kind | what the room does with it |
 |---|---|---|
 | `MODERATOR` | another Worker, named entrypoint (`examples/echo-worker` → `Moderator`) | `moderate(text)` on every message (JS RPC) |
-| `AI` | Workers AI | answers messages that start with `@ai`, or every message while you're alone in the room (`llama-3.2-3b-instruct`, 120 tokens max) |
+| `AI` | Workers AI | answers messages that start with `@ai`, or every message when nobody else in the room has spoken in the last 3 minutes (an idle open tab doesn't count) (`llama-3.2-3b-instruct`, 120 tokens max) |
 | `KV` | Workers KV | caches answers per room and question for an hour |
 | `FILES` | R2 | attachments up to 1 MB. Only images are served inline; everything else is a download |
 | `LOBBY` | another Durable Object (pooled ↔ pooled in the pool) | `update(room, users, last, seq)` on join, leave and message; `takeAiBudget()` caps AI replies per day |

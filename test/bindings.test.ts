@@ -140,13 +140,20 @@ for (const backend of BACKENDS) {
       const p = await alice.next((m) => m.type === "presence" && m.users.length === 2);
       assert.deepEqual(p.users.sort(), ["alice", "bob"]);
       assert.deepEqual(calls(p), ["LOBBY.update()"]);
-      // Two people here: a plain message is just a message (no AI).
+      // Bob is here but hasn't said anything: an idle tab doesn't silence the AI.
+      await bob.next((m) => m.type === "history");
+      alice.ws.send(JSON.stringify({ text: "anyone around?" }));
+      await alice.next((m) => m.type === "msg" && m.kind === "ai");
+      // Once bob is talking, a plain message is just a message, and alice is told why.
+      bob.ws.send(JSON.stringify({ text: "hi alice" }));
+      await alice.next((m) => m.type === "msg" && m.name === "bob");
       alice.ws.send(JSON.stringify({ text: "what a darn  good   demo" }));
-      const m = await bob.next((m) => m.type === "msg");
+      const m = await bob.next((m) => m.type === "msg" && m.name === "alice" && m.text.includes("good"));
       assert.equal(m.text, "what a d*** good demo");
       assert.deepEqual(calls(m), ["MODERATOR.moderate()"]);
+      assert.match((await alice.next((m) => m.type === "hint")).text, /bob is chatting here too/);
       await sleep(2000);
-      assert.ok(!alice.has((m) => m.type === "msg" && m.kind === "ai"), "no AI reply without @ai when others are here");
+      assert.equal(alice.has((m) => m.type === "msg" && m.kind === "ai"), false, "no AI reply without @ai while others are chatting");
       const lobby = await (await fetch(`${BASE}/${backend}/lobby/tests`)).json(); // t-… rooms report here
       assert.equal(lobby.pooled, backend === "pool");
       assert.equal(lobby.rooms.find((r: any) => r.name === room)?.users, 2);

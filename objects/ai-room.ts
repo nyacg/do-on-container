@@ -6,8 +6,8 @@ import { PortableDurableObject, type PoolEnv } from "./portable";
  * the pool every `this.env.*` call below goes through the bridge, on Cloudflare they're native.
  *
  *   MODERATOR  another Worker's named entrypoint (JS RPC): cleans up every message
- *   AI         Workers AI: answers messages that start with "@ai" (or every message, when
- *              you're alone in the room)
+ *   AI         Workers AI: answers messages that start with "@ai", or every message when
+ *              nobody else in the room has spoken in the last 3 minutes
  *   KV         caches AI answers per room and question
  *   FILES      R2: attachments
  *   LOBBY      another Durable Object: occupancy + last message, and the global AI budget
@@ -92,13 +92,32 @@ export class AiRoom extends PortableDurableObject<RoomEnv> {
       return;
     }
     if (!text.trim()) return;
-    const { name } = ws.deserializeAttachment() as { name: string };
+    const att = ws.deserializeAttachment() as { name: string; hinted?: boolean };
+    const name = att.name;
     const trace: Trace = [];
     const clean = await timed(trace, "MODERATOR.moderate()", () => this.env.MODERATOR.moderate(text), (r) => (r.flagged ? "masked" : "ok"));
+    // Who's actually talking: connected, and said something in the last few minutes. An open but
+    // idle tab doesn't count, or it would silence the AI for everyone else.
+    const talking = this.talking(name);
     this.post({ kind: "text", name, text: clean.text, trace });
-    // "@ai …" asks the AI; if nobody else is here, it answers everything.
+    // "@ai …" always asks the AI; otherwise it answers when nobody else is in the conversation.
     const mentioned = /^@ai\b/i.test(clean.text);
-    if (mentioned || this.users().length <= 1) await this.askAi(ws, clean.text.replace(/^@ai\b[:,]?\s*/i, ""));
+    if (mentioned || talking.length === 0) return this.askAi(ws, clean.text.replace(/^@ai\b[:,]?\s*/i, ""));
+    if (!att.hinted) {
+      ws.serializeAttachment({ ...att, hinted: true });
+      const who = talking.join(", ");
+      ws.send(JSON.stringify({ type: "hint", text: `${who} ${talking.length > 1 ? "are" : "is"} chatting here too, so the AI only answers messages that start with @ai.` }));
+    }
+  }
+
+  /** Other people in the room who are connected and have spoken in the last 3 minutes. */
+  private talking(except: string): string[] {
+    const here = new Set(this.users());
+    return this.ctx.storage.sql
+      .exec<{ name: string }>("SELECT DISTINCT name FROM messages WHERE kind IN ('text', 'file') AND at > ? AND name != ?", Date.now() - 3 * 60_000, except)
+      .toArray()
+      .map((r) => r.name)
+      .filter((n) => here.has(n));
   }
 
   async webSocketClose(ws: WebSocket, code: number) {

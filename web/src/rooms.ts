@@ -122,7 +122,7 @@ function connect() {
       if (m.type === "history") {
         for (const x of m.messages as Msg[]) add(x); // after a reconnect, only what we missed (ids dedupe)
         joined = true;
-        if (!log.children.length) system(`New room. While you're alone, the AI answers everything. With others here, start a message with @ai.`);
+        if (!log.children.length) system(`New room. The AI answers everything until someone else joins the conversation; then start a message with @ai.`);
       } else if (m.type === "msg") {
         $("typing").textContent = "";
         add(m);
@@ -130,7 +130,7 @@ function connect() {
         $("who").textContent = `${m.users.length} here: ${m.users.join(", ")}`;
       } else if (m.type === "typing") {
         $("typing").textContent = "ai is thinking…";
-      } else if (m.type === "error") {
+      } else if (m.type === "error" || m.type === "hint") {
         system(m.text);
       }
     },

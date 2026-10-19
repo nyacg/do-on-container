@@ -25,7 +25,15 @@ WPID=$!
 
 drain() {
   echo "[supervisor] SIGTERM: draining"
-  curl -sS -m 600 -X POST http://127.0.0.1:8080/__drain > /stats/drain.json
+  alive=$(kill -0 $WPID 2>/dev/null && echo yes || echo no)
+  curl -sS -m 600 -X POST http://127.0.0.1:8080/__drain > /stats/drain.json 2> /stats/drain.err
+  rc=$?
+  # A failed drain still reports, with why: workerd catches SIGTERM itself, so if the platform
+  # signals every process, workerd may already be gone (seen once in production, 2026-10-17).
+  if [ $rc -ne 0 ] || [ ! -s /stats/drain.json ]; then
+    err=$(tr -d '"\\\n' < /stats/drain.err | head -c 200)
+    printf '{"error":"drain failed: curl exit %s: %s","workerdAliveAtSigterm":"%s"}' "$rc" "$err" "$alive" > /stats/drain.json
+  fi
   cat /stats/drain.json; echo
   curl -s -m 10 -X POST --data-binary @/stats/drain.json http://bridge.internal/drained >/dev/null 2>&1
   kill -TERM $WPID 2>/dev/null
