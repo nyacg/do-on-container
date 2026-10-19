@@ -315,3 +315,42 @@ for (const rootExists of [false, true]) {
     assert.ok((await ctx.storage.getAlarm())! <= at);
   });
 }
+
+// ---------------------------------------------------------------- snapshot size cap
+
+class CacheyObject extends PortableDurableObject {
+  static slug = "conf";
+  protected poolSnapshotExclude() {
+    return ["page_cache"];
+  }
+  onStart() {
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, body TEXT)");
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS page_cache (id INTEGER PRIMARY KEY, data TEXT)");
+  }
+}
+
+test("cache tables are left out of checkpoints, their schema kept", async () => {
+  const ctx = objectContext("cachey");
+  poolRegistry.fresh.add("conf/cachey"); // brand-new: nothing to hydrate
+  const obj = new CacheyObject(ctx as any, { ...env, __DO_POOL: "1" });
+  await ctx.settle();
+  ctx.storage.sql.exec("INSERT INTO notes VALUES ('a', 'keep me')");
+  for (let i = 0; i < 50; i++) ctx.storage.sql.exec("INSERT INTO page_cache VALUES (?, ?)", i, "x".repeat(1000));
+  const { bytes } = await obj.poolSnapshot();
+  const snap = JSON.parse(await gunzip(bytes));
+  const table = (n: string) => snap.tables.find((t: any) => t.name === n);
+  assert.deepEqual(table("notes").rows.length, 1);
+  assert.deepEqual(table("page_cache").rows, []);
+  assert.ok(snap.schema.some((s: any) => s.name === "page_cache"), "schema still recreates the table");
+});
+
+test("an oversized snapshot fails loudly and leaves the object dirty", async () => {
+  const ctx = objectContext("huge");
+  poolRegistry.fresh.add("conf/huge");
+  const obj = new CacheyObject(ctx as any, { ...env, __DO_POOL: "1", POOL_MAX_SNAPSHOT_MB: "0.01" });
+  await ctx.settle();
+  // Incompressible: ~100 KB of random hex against a 10 KB cap.
+  for (let i = 0; i < 100; i++) ctx.storage.sql.exec("INSERT INTO notes VALUES (?, ?)", `n${i}`, Array.from(crypto.getRandomValues(new Uint8Array(512)), (b) => b.toString(16).padStart(2, "0")).join(""));
+  await assert.rejects(obj.poolSnapshot(), /over the 0\.0 MB snapshot cap|over the .* MB snapshot cap/);
+  assert.equal(poolRegistry.dirty.has("conf/huge"), true);
+});

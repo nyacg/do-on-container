@@ -13,7 +13,7 @@
  * GET into the segment. Segments are never rewritten; old ones can be expired once a
  * compaction job carries live entries forward (not implemented — storage is $0.015/GB-month).
  */
-import type { PoolEnv } from "./portable";
+import { maxSnapshotBytes, type PoolEnv } from "./portable";
 
 export const BRIDGE_ORIGIN = "http://bridge.internal";
 
@@ -98,6 +98,9 @@ export async function readSnapshot(env: PoolEnv, key: string): Promise<ArrayBuff
   const e = cache.merged.get(key);
   if (!e) return null;
   const [seg, off, len] = e;
+  // Never pull an oversized snapshot onto a node (one written before the cap, or with a
+  // different cap): fail the wake loudly instead of filling memory and disk.
+  if (len > maxSnapshotBytes(env)) throw new Error(`${key}: checkpoint is ${(len / 1048576).toFixed(1)} MB, over the snapshot cap; refusing to hydrate`);
   const res = await bridgeFetch(env, `/blob/${seg}`, { headers: { range: `bytes=${off}-${off + len - 1}` } });
   if (!res.ok) throw new Error(`read ${key} from ${seg}: ${res.status}`);
   return res.arrayBuffer();
