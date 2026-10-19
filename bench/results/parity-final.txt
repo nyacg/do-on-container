@@ -1,0 +1,8 @@
+✔ parity: do (8156.652833ms)
+✔ parity: pool (7020.985167ms)
+✔ parity: do-facet (7982.923083ms)
+✔ parity: pool-facet (8393.753666ms)
+✔ parity: pool-sbx (8442.579125ms)
+ℹ tests 55
+ℹ pass 55
+ℹ fail 0

@@ -1,0 +1,24 @@
+# Per-tenant workerd config. @TENANT@ and @ADDR@ are substituted at launch.
+using Workerd = import "/workerd/workerd.capnp";
+
+const config :Workerd.Config = (
+  services = [
+    (name = "main", worker = .w),
+    (name = "data", disk = (path = "/tenants/@TENANT@/data", writable = true)),
+    # Escape probe: a disk service rooted at "/" — must only see the sandbox's own view.
+    (name = "root", disk = (path = "/")),
+  ],
+  sockets = [ (name = "http", address = "@ADDR@", http = (), service = "main") ],
+);
+
+const w :Workerd.Worker = (
+  modules = [ (name = "worker.js", esModule = embed "worker.js") ],
+  compatibilityDate = "2026-09-01",
+  bindings = [
+    (name = "COUNTER", durableObjectNamespace = "Counter"),
+    (name = "ROOT", service = "root"),
+    (name = "TENANT", text = "@TENANT@"),
+  ],
+  durableObjectNamespaces = [ (className = "Counter", uniqueKey = "sb-counter", enableSql = true) ],
+  durableObjectStorage = (localDisk = "data"),
+);

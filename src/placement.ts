@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
+import { confirmedEvictions } from "../objects/pool-protocol";
+import type { Entry } from "../objects/ckpt-store";
 
 /**
  * The pool's "load balancer DO". Single instance ("global").
@@ -13,11 +15,19 @@ import type { Env } from "./env";
  * Draining a node deletes its assignments and tells it to checkpoint + close every socket.
  * Clients reconnect, the edge Worker re-resolves, and the object hydrates from R2 on its
  * new node.
+ *
+ * v2 additions:
+ *  - regions: nodes are created with a `locationHint`; new objects prefer a node in the
+ *    caller's region (the container is scheduled next to its PoolNode DO)
+ *  - alarm registry: objects that leave a node (drain, evict, sleep, death) with a pending
+ *    alarm are recorded here; Placement's own alarm wakes them on a live node when due
  */
 
 /** suspect = stopped reporting but its container is still running (usually CPU-starved):
  *  keeps its objects, gets no new ones. Only a confirmed-dead node loses its assignments. */
-type NodeStatus = "starting" | "active" | "suspect" | "draining" | "stopped";
+/** retiring = running an outdated image: keeps serving, gets no new objects, and is emptied in
+ *  batches by live migration (rollout), then stopped. */
+type NodeStatus = "starting" | "active" | "suspect" | "draining" | "retiring" | "sleeping" | "stopped";
 
 interface NodeStats {
   conns?: number;
@@ -33,6 +43,7 @@ interface NodeStats {
 type NodeRow = {
   name: string;
   status: NodeStatus;
+  region: string | null;
   created_at: number;
   last_seen: number;
   stats: string | null;
@@ -51,6 +62,8 @@ const DRAIN_TIMEOUT_MS = 3 * 60_000;
 const REBALANCE_HOT = 0.8;
 const REBALANCE_GAP = 0.3;
 const REBALANCE_BATCH = 50;
+const ROLLOUT_BATCH = 100;
+const ROLLOUT_BATCHES_PER_TICK = 5;
 /** New assignments are invisible to node stats for a few seconds; count them meanwhile. */
 const RECENT_ASSIGN_MS = 30_000;
 const COST_PER_RECENT_ASSIGN = 0.0005;
@@ -61,6 +74,7 @@ export class Placement extends DurableObject<Env> {
   private sql = this.ctx.storage.sql;
   private recent = new Map<string, number[]>();
   private cpuEwma = new Map<string, number>();
+  private drainingNodes = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -74,7 +88,12 @@ export class Placement extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, kind TEXT, node TEXT, detail TEXT);
       CREATE TABLE IF NOT EXISTS seq (k TEXT PRIMARY KEY, v INTEGER);
       CREATE TABLE IF NOT EXISTS known (key TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS alarms (key TEXT PRIMARY KEY, at INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS alarms_at ON alarms(at);
     `);
+    try {
+      this.sql.exec("ALTER TABLE nodes ADD COLUMN region TEXT");
+    } catch {}
   }
 
   // ------------------------------------------------------------------ public RPC
@@ -84,7 +103,7 @@ export class Placement extends DurableObject<Env> {
    * `epoch` = when this assignment was made; nodes use it to tell a stale request (for an
    * object they've handed off) from a new assignment back to them.
    */
-  async resolve(key: string): Promise<{ node: string; fresh: boolean; epoch: number }> {
+  async resolve(key: string, region?: string): Promise<{ node: string; fresh: boolean; epoch: number }> {
     const row = this.sql
       .exec<{ node: string; status: NodeStatus; at: number }>(
         "SELECT a.node, a.at, n.status FROM assignments a JOIN nodes n ON n.name = a.node WHERE a.key = ?",
@@ -94,7 +113,7 @@ export class Placement extends DurableObject<Env> {
     // A draining node keeps its objects (answering 410) until they're persisted and released.
     if (row && row.status !== "stopped") return { node: row.node, fresh: false, epoch: row.at };
     const fresh = this.sql.exec("INSERT OR IGNORE INTO known (key) VALUES (?)", key).rowsWritten > 0;
-    const node = this.pickNode();
+    const node = this.pickNode(undefined, region);
     const epoch = this.assign(key, node);
     const r = this.recent.get(node) ?? [];
     r.push(Date.now());
@@ -129,7 +148,7 @@ export class Placement extends DurableObject<Env> {
       this.ctx.waitUntil(this.env.POOL.getByName(node).shutdown().catch(() => {}));
       return;
     } else {
-      const status = existing.status === "draining" ? "draining" : "active";
+      const status = existing.status === "draining" || existing.status === "retiring" ? existing.status : "active";
       if (existing.status !== status) this.event("active", node);
       this.sql.exec(
         "UPDATE nodes SET status = ?, last_seen = ?, stats = ? WHERE name = ?",
@@ -144,13 +163,89 @@ export class Placement extends DurableObject<Env> {
 
   async nodeStopped(node: string, reason: string): Promise<void> {
     const n = this.getNode(node);
-    if (!n) return;
+    if (!n || n.status === "sleeping") return;
+    if (n.status === "stopped") return void (await this.recoverAlarms(node));
     // Ignore stop events while a node is still booting; the stale check catches real failures.
     if (n.status === "starting" && Date.now() - n.created_at < START_GRACE_MS) return;
     this.event("stopped", node, reason);
-    // Assignments are kept: if the node restarts (rollout, crash) the objects hydrate from R2
-    // on its fresh disk. If it stays down, resolve() re-places them elsewhere.
+    // Assignments are kept: resolve() re-places objects of a stopped node on demand, and they
+    // hydrate from R2. Alarms of objects nobody asks for are recovered from the node's manifest.
     this.sql.exec("UPDATE nodes SET status = 'stopped' WHERE name = ?", node);
+    await this.recoverAlarms(node);
+  }
+
+  /** A node snapshotted itself and is stopping: keep its objects, wake it on demand. */
+  async nodeSleeping(node: string, alarms: { key: string; at: number }[]): Promise<void> {
+    this.sql.exec("UPDATE nodes SET status = 'sleeping' WHERE name = ?", node);
+    this.event("sleep", node, `${alarms.length} pending alarms registered`);
+    await this.registerAlarms(alarms);
+  }
+
+  // ------------------------------------------------------------------ alarm registry
+
+  /** Objects with pending alarms that are leaving a node: wake them elsewhere when due. */
+  async registerAlarms(alarms: { key: string; at: number }[]): Promise<void> {
+    for (const a of alarms) this.sql.exec("INSERT OR REPLACE INTO alarms (key, at) VALUES (?, ?)", a.key, a.at);
+    if (alarms.length) await this.scheduleAlarm();
+  }
+
+  /** A node died without draining: its last checkpoint manifest says which objects had alarms. */
+  private async recoverAlarms(node: string) {
+    const tenantPrefix = `manifest/${node}--t--`;
+    const manifests = [`manifest/${node}`];
+    let cursor: string | undefined;
+    do {
+      const page = await this.env.CHECKPOINTS.list({ prefix: tenantPrefix, cursor });
+      manifests.push(...page.objects.map((o) => o.key));
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    const pending: { key: string; at: number }[] = [];
+    for (const manifest of manifests) {
+      const obj = await this.env.CHECKPOINTS.get(manifest);
+      if (!obj) continue;
+      const m = (await obj.json()) as { entries: Record<string, Entry> };
+      const app = manifest.startsWith(tenantPrefix) ? manifest.slice(tenantPrefix.length) : null;
+      for (const [key, e] of Object.entries(m.entries)) {
+        if (!e[4]) continue;
+        if (app !== null && !key.startsWith(`app/${app}:`)) continue;
+        pending.push({ key: app === null ? key : `sapp/${key.slice("app/".length)}`, at: e[4] });
+      }
+    }
+    // Check ownership after all R2 reads, since a request may have moved a key meanwhile.
+    const alarms = pending.filter((a) => this.assignedTo(a.key) === node);
+    if (alarms.length) this.event("alarms-recovered", node, `${alarms.length} from manifest`);
+    await this.registerAlarms(alarms);
+  }
+
+  private assignedTo(key: string): string | undefined {
+    return this.sql.exec<{ node: string }>("SELECT node FROM assignments WHERE key = ?", key).toArray()[0]?.node;
+  }
+
+  /** Wake objects whose registered alarm is due, on whatever node now owns them. */
+  private async fireDueAlarms(now: number) {
+    const due = this.sql.exec<{ key: string; at: number }>("SELECT key, at FROM alarms WHERE at <= ? LIMIT 500", now + 1000).toArray();
+    if (!due.length) return;
+    const byNode = new Map<string, { key: string; epoch: number }[]>();
+    for (const { key } of due) {
+      const { node, epoch } = await this.resolve(key);
+      byNode.set(node, [...(byNode.get(node) ?? []), { key, epoch }]);
+    }
+    for (const [node, items] of byNode) {
+      try {
+        const r = await this.env.POOL.getByName(node).wake(items);
+        for (const key of r.woke) this.sql.exec("DELETE FROM alarms WHERE key = ?", key);
+        this.event("alarms-woken", node, `${r.woke.length}/${items.length}${r.errors.length ? ` errors: ${r.errors[0]}` : ""}`);
+      } catch (e) {
+        this.event("wake-error", node, String(e).slice(0, 200));
+      }
+    }
+  }
+
+  private async scheduleAlarm() {
+    const next = this.sql.exec<{ at: number | null }>("SELECT min(at) AS at FROM alarms").one().at;
+    const current = await this.ctx.storage.getAlarm();
+    const want = Math.min(next ?? Infinity, current ?? Infinity, Date.now() + ALARM_MS);
+    if (current === null || want < current) await this.ctx.storage.setAlarm(Math.max(want, Date.now()));
   }
 
   /** Move one object to another node (e.g. to rebalance a hot node). */
@@ -161,7 +256,8 @@ export class Placement extends DurableObject<Env> {
     // the assignment moves. Until then resolve() keeps returning `from`, which answers 410.
     if (from) {
       const r = await this.env.POOL.getByName(from).evict(this.assignmentsOf([key]));
-      if (!r.evicted) throw new Error(`evict ${key} from ${from} failed: ${JSON.stringify(r)}`);
+      if (!confirmedEvictions(r, [key]).includes(key)) throw new Error(`evict ${key} from ${from} failed: ${JSON.stringify(r)}`);
+      await this.registerAlarms((r.alarms ?? []).filter((a) => a.key === key));
     }
     this.assign(key, to);
     this.event("migrate", to, `${key} from ${from}`);
@@ -178,19 +274,23 @@ export class Placement extends DurableObject<Env> {
     // so the new node can never hydrate a snapshot older than the last write.
     const t0 = Date.now();
     const r = await this.env.POOL.getByName(from).evict(this.assignmentsOf(keys));
-    if (!r.evicted) {
+    const confirmed = confirmedEvictions(r, keys);
+    if (confirmed.length < keys.length) {
       this.event("evict-error", from, JSON.stringify(r).slice(0, 200));
-      return;
     }
+    if (!confirmed.length) return;
     const now = Date.now();
-    for (const key of keys) this.assign(key, to);
+    for (const key of confirmed) this.assign(key, to);
+    await this.registerAlarms((r.alarms ?? []).filter((a) => confirmed.includes(a.key)));
     const recent = this.recent.get(to) ?? [];
-    for (const _ of keys) recent.push(now);
+    for (const _ of confirmed) recent.push(now);
     this.recent.set(to, recent);
-    this.event("rebalance", from, `${keys.length} objects → ${to} in ${now - t0}ms`);
+    this.event("rebalance", from, `${confirmed.length} objects → ${to} in ${now - t0}ms`);
   }
 
   async drainNode(node: string): Promise<void> {
+    if (this.drainingNodes.has(node)) return;
+    this.drainingNodes.add(node);
     // No new placements here; existing assignments are released only after the node has
     // persisted its objects (see rebalance() for why the order matters).
     this.sql.exec("UPDATE nodes SET status = 'draining', low_since = ? WHERE name = ?", Date.now(), node);
@@ -198,16 +298,73 @@ export class Placement extends DurableObject<Env> {
     this.ctx.waitUntil(
       this.env.POOL.getByName(node)
         .drain()
-        .then((r) => {
+        .then(async (r) => {
+          if (r.failed) throw new Error(`drain incomplete: ${JSON.stringify(r)}`);
+          await this.registerAlarms(r.alarms ?? []);
           const released = this.sql.exec("DELETE FROM assignments WHERE node = ?", node).rowsWritten;
           this.event("drained", node, `${released} released; ${JSON.stringify(r).slice(0, 200)}`);
         })
-        .catch((e) => this.event("drain-error", node, String(e))),
+        .catch((e) => this.event("drain-error", node, String(e)))
+        .finally(() => this.drainingNodes.delete(node)),
     );
   }
 
-  async addNode(): Promise<string> {
-    return this.createNode("manual");
+  // ------------------------------------------------------------------ rollouts
+
+  /**
+   * Code-driven rollout (scheduling_policy "durable_object" never replaces running containers):
+   * nodes whose running image differs from the deployed one become `retiring`; the alarm loop
+   * live-migrates their objects to up-to-date nodes in batches (zero-loss move path), then
+   * stops them. Rollback = deploy the old image and roll out again.
+   */
+  async rollout(): Promise<{ node: string; image: string | null; latest: string; retiring: boolean }[]> {
+    // Existing DOs pick up a new deploy lazily (minutes), so ask a brand-new, storage-less DO
+    // which image the current version would start.
+    const latest = await this.env.POOL.getByName(`image-probe-${crypto.randomUUID()}`).latestImage();
+    const out = [];
+    for (const n of this.nodes().filter((n) => n.status === "active" || n.status === "suspect")) {
+      const info = await this.env.POOL.getByName(n.name).info();
+      const outdated = !!info.image && info.image !== latest;
+      if (outdated) {
+        this.sql.exec("UPDATE nodes SET status = 'retiring' WHERE name = ?", n.name);
+        this.event("retiring", n.name, `image ${short(info.image)} → ${short(latest)}`);
+      }
+      out.push({ node: n.name, image: info.image, latest, retiring: outdated });
+    }
+    await this.ensureAlarm();
+    return out;
+  }
+
+  private async progressRollout() {
+    for (const n of this.nodes().filter((n) => n.status === "retiring")) {
+      for (let b = 0; b < ROLLOUT_BATCHES_PER_TICK; b++) {
+        const keys = this.sql
+          .exec<{ key: string }>("SELECT key FROM assignments WHERE node = ? LIMIT ?", n.name, ROLLOUT_BATCH)
+          .toArray()
+          .map((r) => r.key);
+        if (!keys.length) {
+          this.event("retired", n.name, "empty; stopping");
+          this.sql.exec("UPDATE nodes SET status = 'stopped' WHERE name = ?", n.name);
+          this.ctx.waitUntil(this.env.POOL.getByName(n.name).shutdown().catch(() => {}));
+          break;
+        }
+        const to = this.pickNode(n.name, n.region ?? undefined);
+        if (this.getNode(to)?.status !== "active") break; // replacement still starting: next tick
+        const r = await this.env.POOL.getByName(n.name).evict(this.assignmentsOf(keys));
+        const confirmed = confirmedEvictions(r, keys);
+        if (confirmed.length < keys.length) {
+          this.event("evict-error", n.name, JSON.stringify(r).slice(0, 200));
+        }
+        for (const key of confirmed) this.assign(key, to);
+        await this.registerAlarms((r.alarms ?? []).filter((a) => confirmed.includes(a.key)));
+        if (confirmed.length) this.event("rollout-move", n.name, `${confirmed.length} objects → ${to}`);
+        if (confirmed.length < keys.length) break;
+      }
+    }
+  }
+
+  async addNode(region?: string): Promise<string> {
+    return this.createNode("manual", region);
   }
 
   async status() {
@@ -219,6 +376,7 @@ export class Placement extends DurableObject<Env> {
       load: Number(this.load(n).toFixed(3)),
       cpuEwma: Number((this.cpuEwma.get(n.name) ?? 0).toFixed(3)),
       lastSeenS: Math.round((Date.now() - n.last_seen) / 1000),
+      region: n.region,
       location: location(n.stats),
       stats: n.stats ? JSON.parse(n.stats) : null,
     }));
@@ -226,12 +384,13 @@ export class Placement extends DurableObject<Env> {
       .exec("SELECT at, kind, node, detail FROM events ORDER BY id DESC LIMIT 30")
       .toArray();
     const assignments = this.sql.exec<{ n: number }>("SELECT count(*) AS n FROM assignments").one().n;
-    return { nodes, assignments, events, config: this.config(), placementVersion: this.env.VERSION?.id };
+    const alarms = this.sql.exec<{ n: number; next: number | null }>("SELECT count(*) AS n, min(at) AS next FROM alarms").one();
+    return { nodes, assignments, alarms, events, config: this.config(), placementVersion: this.env.VERSION?.id };
   }
 
   async reset(): Promise<void> {
     for (const n of this.nodes()) if (n.status !== "stopped") await this.env.POOL.getByName(n.name).shutdown().catch(() => {});
-    this.sql.exec("DELETE FROM nodes; DELETE FROM assignments; DELETE FROM events; DELETE FROM known;");
+    this.sql.exec("DELETE FROM nodes; DELETE FROM assignments; DELETE FROM events; DELETE FROM known; DELETE FROM alarms;");
   }
 
   // ------------------------------------------------------------------ scaling loop
@@ -239,6 +398,7 @@ export class Placement extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const now = Date.now();
     const cfg = this.config();
+    await this.fireDueAlarms(now);
     for (const [node, ts] of this.recent) {
       const keep = ts.filter((t) => now - t < RECENT_ASSIGN_MS);
       if (keep.length) this.recent.set(node, keep);
@@ -257,11 +417,19 @@ export class Placement extends DurableObject<Env> {
         if (status !== n.status) {
           this.sql.exec("UPDATE nodes SET status = ? WHERE name = ?", status, n.name);
           this.event(status === "stopped" ? "dead" : "suspect", n.name, `no stats for ${Math.round((now - n.last_seen) / 1000)}s`);
+          if (status === "stopped") await this.recoverAlarms(n.name);
         }
       }
     }
-    // 2. Finish drains: once a draining node has no connections (or times out), stop it.
+    // 2a. Rollouts: empty retiring nodes onto up-to-date ones.
+    await this.progressRollout();
+    // 2b. Finish drains: once a draining node has no connections (or times out), stop it.
     for (const n of nodes.filter((n) => n.status === "draining")) {
+      // A failed or still-running drain must finish persisting before the node is stopped.
+      if (n.assigned) {
+        await this.drainNode(n.name);
+        continue;
+      }
       const conns = (JSON.parse(n.stats ?? "{}") as NodeStats).conns ?? 0;
       if (conns === 0 || now - (this.lowSince(n.name) ?? now) > DRAIN_TIMEOUT_MS) {
         this.sql.exec("UPDATE nodes SET status = 'stopped' WHERE name = ?", n.name);
@@ -271,8 +439,15 @@ export class Placement extends DurableObject<Env> {
     }
 
     nodes = this.nodes().filter((n) => n.status === "active" || n.status === "starting");
-    // 3. Keep the floor.
-    for (let i = nodes.length; i < cfg.minNodes; i++) this.createNode("min-nodes");
+    // 3. Keep the floor (a sleeping node counts: it wakes on the next request), in the region
+    //    where most objects live, so it's useful to them.
+    const sleeping = this.nodes().filter((n) => n.status === "sleeping").length;
+    const busiest = this.sql
+      .exec<{ region: string | null }>(
+        "SELECT n.region FROM assignments a JOIN nodes n ON n.name = a.node WHERE n.region IS NOT NULL GROUP BY n.region ORDER BY count(*) DESC LIMIT 1",
+      )
+      .toArray()[0]?.region ?? undefined;
+    for (let i = nodes.length + sleeping; i < cfg.minNodes; i++) this.createNode("min-nodes", busiest);
 
     // 4. Pre-warm: if the pool is hot on average and nothing is starting, add a node before we
     //    need it (the rebalancer below then moves objects onto it).
@@ -317,7 +492,12 @@ export class Placement extends DurableObject<Env> {
     );
     this.sql.exec("DELETE FROM events WHERE id < (SELECT max(id) FROM events) - 500");
 
-    if (this.nodes().some((n) => n.status !== "stopped")) await this.ctx.storage.setAlarm(now + ALARM_MS);
+    const pendingAlarm = this.sql.exec<{ at: number | null }>("SELECT min(at) AS at FROM alarms").one().at;
+    if (this.nodes().some((n) => n.status !== "stopped" && n.status !== "sleeping")) {
+      await this.ctx.storage.setAlarm(Math.min(now + ALARM_MS, pendingAlarm ?? Infinity));
+    } else if (pendingAlarm !== null) {
+      await this.ctx.storage.setAlarm(Math.max(pendingAlarm, now + 1000));
+    }
   }
 
   // ------------------------------------------------------------------ internals
@@ -371,34 +551,50 @@ export class Placement extends DurableObject<Env> {
     return Math.max(conns, cpu, mem) + recent;
   }
 
-  private pickNode(exclude?: string): string {
-    const candidates = this.nodes()
+  /**
+   * Least-loaded node with headroom, preferring the caller's region; otherwise a node that's
+   * already starting (in-region first); otherwise a new node in that region; at the cap, overpack.
+   */
+  private pickNode(exclude?: string, region?: string): string {
+    const all = this.nodes()
       .filter((n) => (n.status === "active" || n.status === "starting") && n.name !== exclude)
       .map((n) => ({ n, load: this.load(n) }))
       .sort((a, b) => a.load - b.load);
-    const best = candidates[0];
+    const local = region ? all.filter((c) => c.n.region === region) : all;
+    const best = local[0];
     if (best && best.load < SCALE_UP_AT) return best.n.name;
-    const startingNode = candidates.find((c) => c.n.status === "starting");
+    // A sleeping node beats a brand-new one: it restores from its snapshot in ~1 s.
+    const asleep = this.nodes().filter((n) => n.status === "sleeping" && n.name !== exclude && (!region || n.region === region));
+    if (asleep.length) return asleep[0].name;
+    const startingNode = local.find((c) => c.n.status === "starting");
     if (startingNode) return startingNode.n.name;
-    if (candidates.length >= this.config().maxNodes) return best.n.name; // at the cap: overpack
-    return this.createNode(best ? `all nodes >= ${SCALE_UP_AT}` : "first node");
+    if (all.length < this.config().maxNodes) {
+      return this.createNode(best ? `all ${region ?? ""} nodes >= ${SCALE_UP_AT}` : `first node${region ? ` in ${region}` : ""}`, region);
+    }
+    const fallback = all.find((c) => c.load < SCALE_UP_AT) ?? all[0];
+    return fallback.n.name; // at the cap: nearest-with-room elsewhere, else overpack
   }
 
-  private createNode(reason: string): string {
+  private createNode(reason: string, region?: string): string {
     const next = this.sql
       .exec<{ v: number }>("INSERT INTO seq (k, v) VALUES ('node', 1) ON CONFLICT(k) DO UPDATE SET v = v + 1 RETURNING v")
       .one().v;
     const name = `node-${next}`;
     const now = Date.now();
     this.sql.exec(
-      "INSERT INTO nodes (name, status, created_at, last_seen) VALUES (?, 'starting', ?, ?)",
+      "INSERT INTO nodes (name, status, created_at, last_seen, region) VALUES (?, 'starting', ?, ?, ?)",
       name,
       now,
       now,
+      region ?? null,
     );
-    this.event("create", name, reason);
+    this.event("create", name, `${reason}${region ? ` @${region}` : ""}`);
+    // The first access to a DO fixes its location: create it with the region hint.
+    const stub = region
+      ? this.env.POOL.get(this.env.POOL.idFromName(name), { locationHint: region as DurableObjectLocationHint })
+      : this.env.POOL.getByName(name);
     this.ctx.waitUntil(
-      this.env.POOL.getByName(name)
+      stub
         .warm()
         .catch((e) => this.event("warm-error", name, String(e))),
     );
@@ -413,3 +609,5 @@ export class Placement extends DurableObject<Env> {
     this.sql.exec("INSERT INTO events (at, kind, node, detail) VALUES (?, ?, ?, ?)", Date.now(), kind, node, detail);
   }
 }
+
+const short = (image: string | null) => (image ? image.split("@sha256:")[1]?.slice(0, 8) ?? image.slice(-12) : "none");

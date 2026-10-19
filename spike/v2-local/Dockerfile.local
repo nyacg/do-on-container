@@ -1,0 +1,7 @@
+# Local measurement image (linux/arm64 on the Mac). Context dir must contain the linux workerd binary:
+#   npm pack @cloudflare/workerd-linux-arm64@1.20261014.1 && tar xzf ... && cp package/bin/workerd <ctx>/
+#   docker build -f spike/v2-local/Dockerfile.local -t v2-local-workerd <ctx>
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl procps && rm -rf /var/lib/apt/lists/*
+COPY workerd /usr/local/bin/workerd
+WORKDIR /app

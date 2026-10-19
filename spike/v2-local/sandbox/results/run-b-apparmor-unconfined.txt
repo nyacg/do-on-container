@@ -1,0 +1,50 @@
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 2  userns_max=31322 NET=unshare NSJ_SECCOMP=0
+-- [none] shell: uid=0 cat_t2=[secret-of-t2] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [none] workerd OK first_req=28ms resp={"tenant":"t1","count":3} Uid:0 NSpid:55 CapEff:00000000a80425fb NoNewPrivs:0 Seccomp:2  mntns=shared netns=shared userns=shared wrapper=[workerd/root/rss=56816k ]
+   [none] disk-escape t2: status=200 secret-of-t2 
+   [none] disk own t1:    status=200 secret-of-t1 
+   [none] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [setpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: Permission denied] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [setpriv] workerd OK first_req=37ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:156 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:2  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[workerd/t1/rss=56688k ]
+   [setpriv] disk-escape t2: status=404 Not Found
+   [setpriv] disk own t1:    status=200 secret-of-t1 
+   [setpriv] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-root] shell: unshare: unshare failed: Operation not permitted 
+   [unshare-root] workerd FAILED after 6ms: unshare: unshare failed: Operation not permitted 
+-- [unshare-userns] shell: unshare: unshare failed: Operation not permitted 
+   [unshare-userns] workerd FAILED after 6ms: unshare: unshare failed: Operation not permitted 
+-- [bwrap] shell: bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>. 
+   [bwrap] workerd FAILED after 8ms: bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>. 
+-- [bwrap-suid] shell: bwrap: capset failed: Operation not permitted 
+   [bwrap-suid] workerd FAILED after 8ms: bwrap: capset failed: Operation not permitted 
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 6ms: 
+   [nsjail] nsjail log: [W][2026-10-16T00:40:05+0000][389] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:05+0000][389] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:05+0000][394] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:05+0000][394] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-nouserns] shell: 
+   [nsjail-nouserns] workerd FAILED after 7ms: 
+   [nsjail-nouserns] nsjail log: [W][2026-10-16T00:40:05+0000][433] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:05+0000][433] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:05+0000][438] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:05+0000][438] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: 
+   [nsjail-unpriv] workerd FAILED after 5ms: 
+   [nsjail-unpriv] nsjail log: [W][2026-10-16T00:40:06+0000][477] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][477] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:06+0000][483] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][483] standaloneMode():275 Couldn't launch the child process 
+
+## NET=share
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 2  userns_max=31322 NET=share NSJ_SECCOMP=0
+-- [bwrap] shell: bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>. 
+   [bwrap] workerd FAILED after 4ms: bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>. 
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 5ms: 
+   [nsjail] nsjail log: [W][2026-10-16T00:40:06+0000][575] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][575] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:06+0000][580] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][580] standaloneMode():275 Couldn't launch the child process 
+-- [unshare-root] shell: unshare: unshare failed: Operation not permitted 
+   [unshare-root] workerd FAILED after 9ms: unshare: unshare failed: Operation not permitted 
+
+## NSJ_SECCOMP=1
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a80425fb NoNewPrivs: 0 Seccomp: 2  userns_max=31322 NET=unshare NSJ_SECCOMP=1
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 6ms: 
+   [nsjail] nsjail log: [W][2026-10-16T00:40:06+0000][662] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][662] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:06+0000][667] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:06+0000][667] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: 
+   [nsjail-unpriv] workerd FAILED after 7ms: 
+   [nsjail-unpriv] nsjail log: [W][2026-10-16T00:40:07+0000][706] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:07+0000][706] standaloneMode():275 Couldn't launch the child process [W][2026-10-16T00:40:07+0000][712] runChild():491 clone(flags=CLONE_NEWNS|CLONE_NEWCGROUP|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET) failed: Operation not permitted [E][2026-10-16T00:40:07+0000][712] standaloneMode():275 Couldn't launch the child process 

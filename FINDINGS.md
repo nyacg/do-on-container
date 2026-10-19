@@ -52,3 +52,45 @@ Spike code lives in `spike/`. It contains:
   - Real DO ≈ $202 duration + $48 requests ≈ $250/month.
   - Pool needs about 2 `standard-2` to keep latency sane, ≈ $190/month.
   - **About break-even.** Hibernation and free outbound frames make real DOs hard to beat here.
+
+---
+
+# v2 Phase 0 findings (2026-10-15)
+
+Measured on Cloudflare with `spike/v2-cf` (worker `do-pool-v2-spike`). Local workerd details are in
+`spike/v2-local/FINDINGS-local.md`.
+
+## Containers under `scheduling_policy: "durable_object"`
+| | Result |
+|---|---|
+| Placement | **The container always starts in the same city as its DO.** `locationHint` wnam → SJC/SEA/DEN/DFW, enam → IAD, weur → AMS, apac → SIN. That fixes v1's Paris/Osaka problem. |
+| Cold start, new node (image not yet on host) | 2.3–6.9 s |
+| Start, image already on host | 0.8–2.5 s |
+| Start from a container snapshot | **0.6–2.2 s** |
+| Instance types | `lite` and `standard-1..4` work. **`basic` is rejected** ("Invalid container instance type"). Custom sizes need ≥1 vCPU; `{vcpu:1, memoryMib:2048, diskMb:4000}` works. |
+| `ctx.container.images.node` | Follows the *DO's* code version. A DO started before a deploy keeps seeing the old digest until it restarts. |
+| `exec()` | Returned "internal error" on a wedged container. Don't rely on it for control. |
+
+## Filesystem snapshots
+| | Result |
+|---|---|
+| `snapshotContainer()` | 2.5–4.4 s; 0.4–10.7 MB (only the changed filesystem) |
+| Restore → ready | 0.6–2.2 s, with all SQLite data present |
+| Snapshot taken during continuous SQLite writes | **Crash-consistent**: all 20 databases opened after restore. Writes after the snapshot point are gone, as expected. |
+| `snapshotDirectory()` (in experimental types) | Not available in production (`undefined`) |
+| Tied to the image | Per the docs; restore uses the snapshot's image |
+
+## Isolation inside a Cloudflare container (`probe.sh`)
+- **Environment:** Firecracker microVM, kernel 6.18 (`cloudflare-microvm`). We run as root with CAP_SYS_ADMIN and all other capabilities, with **no seccomp**, and user namespaces are enabled (max 1818).
+- **What works:**
+  - `bwrap --unshare-all` as an unprivileged uid, without `/proc`
+  - `unshare -U/-m/-p/-n`
+  - `setpriv` to drop the uid
+- **What fails:** mounting a fresh procfs inside a user namespace (`/proc` paths are masked). workerd doesn't need it.
+- So each tenant can run in its own **user, mount, PID and network namespaces as its own uid**, inside a VM that's already per node.
+
+## Dynamic Workers + facets on Cloudflare (real DO)
+- `worker_loaders` + `ctx.facets.get()` work on this account, and the facet gets its own SQLite.
+- **Parity difference:**
+  - On Cloudflare, `setAlarm` in a facet fails only with "must have an alarm() handler", so facets can have alarms.
+  - In local workerd, facets can't set alarms at all; a root proxy is needed.

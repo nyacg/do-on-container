@@ -1,0 +1,56 @@
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a82425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=0
+-- [none] shell: uid=0 cat_t2=[secret-of-t2] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [none] workerd OK first_req=23ms resp={"tenant":"t1","count":3} Uid:0 NSpid:55 CapEff:00000000a82425fb NoNewPrivs:0 Seccomp:0  mntns=shared netns=shared userns=shared wrapper=[workerd/root/rss=56692k ]
+   [none] disk-escape t2: status=200 secret-of-t2 
+   [none] disk own t1:    status=200 secret-of-t1 
+   [none] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [setpriv] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: Permission denied] own=[secret-of-t1] ls_tenants=[t1 t2 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=11 ns=4026533368,4026533373,4026531837,4026533371, 
+   [setpriv] workerd OK first_req=35ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:156 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[workerd/t1/rss=56812k ]
+   [setpriv] disk-escape t2: status=404 Not Found
+   [setpriv] disk own t1:    status=200 secret-of-t1 
+   [setpriv] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-root] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533503,4026533505,4026531837,4026533504, 
+   [unshare-root] workerd OK first_req=32ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:266,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[unshare/root/rss=884k workerd/t1/rss=56592k ]
+   [unshare-root] disk-escape t2: status=404 Not Found
+   [unshare-root] disk own t1:    status=200 secret-of-t1 
+   [unshare-root] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+-- [unshare-userns] shell: unshare: mount /proc failed: Operation not permitted 
+   [unshare-userns] workerd FAILED after 6ms: unshare: mount /proc failed: Operation not permitted 
+-- [bwrap] shell: bwrap: Can't mount proc on /newroot/proc: Operation not permitted 
+   [bwrap] workerd FAILED after 21ms: bwrap: Can't mount proc on /newroot/proc: Operation not permitted 
+-- [bwrap-suid] shell: bwrap: capset failed: Operation not permitted 
+   [bwrap-suid] workerd FAILED after 6ms: bwrap: capset failed: Operation not permitted 
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 22ms: 
+   [nsjail] nsjail log: [E][2026-10-16T00:40:17+0000][1] initCloneNs():411 Couldn't mount '/proc' [F][2026-10-16T00:40:17+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:17+0000][478] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:17+0000][478] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-nouserns] shell: 
+   [nsjail-nouserns] workerd FAILED after 5ms: 
+   [nsjail-nouserns] nsjail log: [E][2026-10-16T00:40:17+0000][1] ifaceUp():356 ioctl(iface='lo', SIOCSIFFLAGS, IFF_UP|IFF_RUNNING): Operation not permitted [F][2026-10-16T00:40:17+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:17+0000][524] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:17+0000][524] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: 
+   [nsjail-unpriv] workerd FAILED after 18ms: 
+   [nsjail-unpriv] nsjail log: [E][2026-10-16T00:40:17+0000][1] initCloneNs():411 Couldn't mount '/proc' [F][2026-10-16T00:40:17+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:17+0000][571] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:17+0000][571] standaloneMode():275 Couldn't launch the child process 
+
+## NET=share
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a82425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=share NSJ_SECCOMP=0
+-- [bwrap] shell: bwrap: Can't mount proc on /newroot/proc: Operation not permitted 
+   [bwrap] workerd FAILED after 4ms: bwrap: Can't mount proc on /newroot/proc: Operation not permitted 
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 5ms: 
+   [nsjail] nsjail log: [E][2026-10-16T00:40:18+0000][1] initCloneNs():411 Couldn't mount '/proc' [F][2026-10-16T00:40:18+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:18+0000][675] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:18+0000][675] standaloneMode():275 Couldn't launch the child process 
+-- [unshare-root] shell: uid=10001 cat_t2=[cat: /tenants/t2/secret: No such file or directory] own=[secret-of-t1] ls_tenants=[t1 ] root=[bin boot dev etc home lib media mnt opt proc root run sb sbin srv sys tenants tmp usr var ] pids_visible=4 ns=4026533627,4026533373,4026531837,4026533628, 
+   [unshare-root] workerd OK first_req=26ms resp={"tenant":"t1","count":3} Uid:10001,10001 NSpid:748,1 CapEff:0000000000000000 NoNewPrivs:1 Seccomp:0  mntns=EPERM(no CAP_SYS_PTRACE) netns=EPERM(no CAP_SYS_PTRACE) userns=EPERM(no CAP_SYS_PTRACE) wrapper=[unshare/root/rss=884k workerd/t1/rss=49812k ]
+   [unshare-root] disk-escape t2: status=404 Not Found
+   [unshare-root] disk own t1:    status=200 secret-of-t1 
+   [unshare-root] disk ls /:      status=200 [{"name":"bin","type":"symlink"},{"name":"boot","type":"directory"},{"name":"dev","type":"directory"},{"name":"etc","type":"directory"},{"name":"home","type":"directory"},{"name":"lib","typ
+
+## NSJ_SECCOMP=1
+== outer ns(mnt,net,user,pid)=4026533368,4026533373,4026531837,4026533371,
+== container: CapEff: 00000000a82425fb NoNewPrivs: 0 Seccomp: 0  userns_max=31322 NET=unshare NSJ_SECCOMP=1
+-- [nsjail] shell: 
+   [nsjail] workerd FAILED after 4ms: 
+   [nsjail] nsjail log: [E][2026-10-16T00:40:18+0000][1] initCloneNs():411 Couldn't mount '/proc' [F][2026-10-16T00:40:18+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:18+0000][840] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:18+0000][840] standaloneMode():275 Couldn't launch the child process 
+-- [nsjail-unpriv] shell: 
+   [nsjail-unpriv] workerd FAILED after 23ms: 
+   [nsjail-unpriv] nsjail log: [E][2026-10-16T00:40:18+0000][1] initCloneNs():411 Couldn't mount '/proc' [F][2026-10-16T00:40:18+0000][1] runChild():486 Launching child process failed [W][2026-10-16T00:40:18+0000][887] runChild():506 Received error message from the child process before it has been executed [E][2026-10-16T00:40:18+0000][887] standaloneMode():275 Couldn't launch the child process 

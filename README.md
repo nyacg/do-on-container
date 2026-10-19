@@ -14,6 +14,32 @@ a month instead of $4,050. Objects that mostly hibernate should stay real DOs. S
 Live demo (while it's up): https://do-pool.do-pool-lab.workers.dev. It has two demos (live cursors
 and a Yjs editor), each with a backend switch, plus a pool dashboard.
 
+> **v2** ([`docs/v2.md`](docs/v2.md)) adds:
+>
+> - alarms that survive moves and crashes
+> - native `ctx.container` with region-local nodes
+> - snapshot sleep/wake
+> - Dynamic Workers + facets, with hot code swaps
+> - a sandboxed process per tenant app for untrusted code
+> - bindings from pooled objects: KV, R2, Workers AI, other Workers and other DOs, with the same code
+>   ([docs/bindings.md](docs/bindings.md); example: [AI chat rooms](https://do-pool-v2.do-pool-lab.workers.dev/rooms.html))
+>
+> An API parity suite runs the same assertions against real DOs, pooled DOs, real facets and pooled
+> facets. Preview: https://do-pool-v2.do-pool-lab.workers.dev. Try the dynamic-app
+> [examples](examples/README.md) in the [playground](https://do-pool-v2.do-pool-lab.workers.dev/apps.html).
+
+| Capability | Real DO | do-pool v1 | do-pool v2 |
+|---|---|---|---|
+| SQL / KV / transactions / WebSocket hibernation API | ✅ | ✅ | ✅ |
+| Alarms (incl. retries) | ✅ | ⚠️ lost on move or crash | ✅ |
+| Zero lost writes on planned moves | n/a | ⚠️ rare race | ✅ |
+| Write acknowledged after replication | ✅ | ❌ RPO 30 s | ❌ RPO 30 s on hard failure |
+| Near its users | ✅ | ❌ | ✅ region-local nodes |
+| Scale to zero | ✅ | ⚠️ | ✅ snapshot sleep/wake |
+| Dynamic code (Worker Loader + facets), hot swaps | ✅ | ❌ | ✅ |
+| Untrusted tenant code | ✅ | ❌ | ✅ process + namespaces per app, in a microVM |
+| Point-in-time recovery | ✅ | ❌ | ❌ |
+
 ## How it works
 
 ```
@@ -46,6 +72,11 @@ Browser ──► Worker (edge router, static assets)
   (rollout, scale-down, sleep) flushes everything first.
 - **The bridge** (`src/bridge.ts`) gives code inside the container access to Worker bindings
   through plain HTTP to `bridge.internal`, intercepted by the Container's outbound handler.
+- **Bindings** (v2): pooled objects use `this.env.KV`, `FILES` (R2), `AI`, service bindings and
+  other Durable Objects (`env.BIND.getByName(x).ping()`) with the same code as a real DO. Each
+  call is recorded by a proxy and replayed on the real binding by the bridge; DO→DO calls are
+  routed through Placement to whichever node owns the target. Declare bindings in wrangler.jsonc
+  `env.control` and rebuild. See [docs/bindings.md](docs/bindings.md).
 
 Write classes the usual way, but extend `PortableDurableObject` and put setup in `onStart()`:
 
@@ -73,13 +104,28 @@ Then register it in `objects/index.ts`, `container/workerd.capnp` and `wrangler.
 | `spike/` | phase-1 feasibility spike (instance-type and runtime comparisons) |
 | `FINDINGS.md` | phase-1 notes |
 
+## Tests
+
+```sh
+# API parity: identical assertions against each backend (v2 preview)
+BACKENDS=do,pool,do-facet,pool-facet,pool-sbx npm run test:parity
+# Pool guarantees (slow): alarms across move/SIGTERM/SIGKILL, zero-loss migration under writes,
+# control-plane deploy under load, sleep/wake, facet migration + code swap, sandbox isolation,
+# DO→DO binding calls that follow their target across a move
+ADMIN_TOKEN=... npm run test:lifecycle
+# Bindings (KV, R2, AI, another Worker, another DO), real DO vs pooled
+npm run test:bindings
+```
+
 ## Run it
 
 ```sh
 npm install
 cp .env.example .env            # CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, ADMIN_TOKEN
 npx wrangler r2 bucket create do-pool-checkpoints
-npm run deploy                  # builds the container bundle + web, then wrangler deploy
+npm run deploy                  # v1: builds the container bundle + web, then wrangler deploy
+npm run deploy:control          # v2 pool (nodes, Placement, bridge, image); restarts nodes
+npm run deploy:preview          # v2 edge Worker; doesn't touch the pool
 echo "$ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN
 ```
 
@@ -144,7 +190,8 @@ Admin API (`Authorization: Bearer $ADMIN_TOKEN`): `POST /api/{add-node,drain?nod
   which is fine for thousands of objects but not millions.
 - Placement is a single DO: every *new* object placement goes through it. Lookups are cached
   per isolate.
-- Pooled objects can't call each other directly through DO bindings yet. Route through the
-  bridge.
+- Bindings from pooled objects add ~15–25 ms per call (a hop through the control Worker) and
+  buffer bodies instead of streaming them. No WebSockets over bindings. Sandboxed tenants and
+  dynamic apps get no bindings. See [docs/bindings.md](docs/bindings.md).
 - Containers have no location control, so pooled objects aren't near their users the way real
   DOs are.

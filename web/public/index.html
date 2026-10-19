@@ -2,19 +2,33 @@
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>do-pool · Durable Objects bin-packed into Cloudflare Containers</title><link rel="stylesheet" href="/style.css"></head>
 <body><main>
-<h1>do-pool</h1>
-<p class="sub">The same Durable Object classes, running either as real Durable Objects or bin-packed by the hundred into
-workerd inside Cloudflare Containers. Open a demo in two tabs, then flip the backend.</p>
-<div class="demos">
-  <a href="/cursors.html?backend=pool"><b>Live cursors · pool</b><span>20 Hz batched presence, click to stamp (persisted)</span></a>
-  <a href="/cursors.html?backend=do"><b>Live cursors · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
-  <a href="/editor.html?backend=pool"><b>Collaborative editor · pool</b><span>Yjs + CodeMirror over y-websocket</span></a>
-  <a href="/editor.html?backend=do"><b>Collaborative editor · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
-  <a href="/cost.html"><b>What it costs</b><span>1,000 objects: real DOs vs the pool, by awake time</span></a>
+<section class="hero">
+  <p class="eyebrow">do-pool</p>
+  <h1>Durable Objects, bin-packed into Cloudflare Containers</h1>
+  <p>The same Durable Object classes run either as real Durable Objects or by the thousand inside workerd in a
+    container. That's <b>~180× cheaper</b> for objects that stay awake, with the same API, verified by 55 parity tests.
+    Open a demo in two tabs, then flip the backend.</p>
+</section>
+<div class="grid c3 entry">
+  <a class="card link" href="/how.html"><p class="eyebrow">Start here</p><h3>How it works →</h3>
+    <p>An 11-step animated walkthrough: requests, where state lives, checkpoints, moves, sleep, alarms, sandboxes.</p></a>
+  <a class="card link" href="/bench.html"><p class="eyebrow">The honest part</p><h3>Benchmarks & limits →</h3>
+    <p>Cost, recovery times, density and throughput, plus what a real Durable Object does better.</p></a>
+  <a class="card link" href="/apps.html"><p class="eyebrow">Dynamic code</p><h3>Dynamic apps →</h3>
+    <p>Publish a Durable Object class at runtime and run it as a facet: on Cloudflare, pooled, or in its own sandbox.</p></a>
 </div>
-<h2>Pool</h2>
-<p class="sub" id="summary"></p>
-<table><thead><tr><th>node</th><th>where</th><th>status</th><th>load</th><th>conns</th><th>cpu</th><th>mem</th><th>live DOs</th><th>assigned</th><th>checkpoints</th><th>seen</th></tr></thead>
+<h2 class="section">Demos</h2>
+<div class="demos">
+  <a href="/cursors.html?backend=pool"><b><span class="dot" style="background:var(--blue)"></span>Live cursors · pool</b><span>20 Hz batched presence; click to stamp (persisted)</span></a>
+  <a href="/cursors.html?backend=do"><b><span class="dot" style="background:var(--orange)"></span>Live cursors · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
+  <a href="/editor.html?backend=pool"><b><span class="dot" style="background:var(--blue)"></span>Collaborative editor · pool</b><span>Yjs + CodeMirror over y-websocket</span></a>
+  <a href="/editor.html?backend=do"><b><span class="dot" style="background:var(--orange)"></span>Collaborative editor · real DO</b><span>Same class on Cloudflare Durable Objects</span></a>
+  <a href="/rooms.html?backend=pool"><b><span class="dot" style="background:var(--blue)"></span>AI chat rooms · pool</b><span>Workers AI, KV, R2, another Worker and a lobby DO, all used from a pooled object</span></a>
+  <a href="/rooms.html?backend=do"><b><span class="dot" style="background:var(--orange)"></span>AI chat rooms · real DO</b><span>Same class, native bindings: compare the per-call timings</span></a>
+</div>
+<h2 class="section">The pool, live</h2>
+<p class="lede" id="summary"></p>
+<table class="cmp"><thead><tr><th>node</th><th>where</th><th>status</th><th>load</th><th>conns</th><th>cpu</th><th>mem</th><th>live DOs</th><th>assigned</th><th>checkpoints</th><th>seen</th></tr></thead>
 <tbody id="nodes"></tbody></table>
-<h2>Events</h2><ul id="events"></ul>
+<h2 class="section">Events</h2><ul id="events"></ul>
 </main><script type="module" src="/js/dashboard.js"></script></body></html>

@@ -1,6 +1,7 @@
 import { Container, type StopParams } from "@cloudflare/containers";
 import type { Env } from "./env";
 import { bridge } from "./bridge";
+import type { EvictionResult } from "../objects/pool-protocol";
 
 /**
  * One PoolNode DO fronts one container running workerd with many Durable Objects inside.
@@ -60,8 +61,8 @@ export class PoolNode extends Container<Env> {
   }
 
   /** Snapshot these objects into one segment, close their sockets, answer 410 from now on. */
-  async evict(items: { key: string; epoch: number }[]): Promise<{ evicted: number; seg?: string | null }> {
-    if (!this.ctx.container?.running || !items.length) return { evicted: items.length };
+  async evict(items: { key: string; epoch: number }[]): Promise<EvictionResult> {
+    if (!this.ctx.container?.running || !items.length) return { evicted: items.length, evictedKeys: items.map((i) => i.key) };
     const res = await this.containerFetch("http://node/__evict", { method: "POST", body: JSON.stringify(items) });
     return res.json();
   }

@@ -1,0 +1,97 @@
+
+== kernel / runtime
+Linux eebde3bcdb3c 6.10.14-linuxkit #1 SMP Tue Oct 14 07:32:13 UTC 2025 aarch64 GNU/Linux
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+id: uid=0(root) gid=0(root) groups=0(root)
+pid1: /usr/bin/tini -- /sb/probe.sh 
+CapInh:	0000000000000000
+CapPrm:	00000000a82425fb
+CapEff:	00000000a82425fb
+CapBnd:	00000000a82425fb
+CapAmb:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	0
+Seccomp_filters:	0
+0x00000000a82425fb=cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_net_raw,cap_sys_chroot,cap_sys_admin,cap_mknod,cap_audit_write,cap_setfcap
+virt:   cpus=14 mem=8024876 kB
+kernel cmdline: init=/init loglevel=1 root=/dev/vdb rootfstype=erofs ro vsyscall=emulate panic=0 eth0.dhcp eth1.dhcp linuxkit.unified_cgroup_hierarchy=1 console=hvc0   virtio_net.disable_csum=1 vpnkit.connect=connect://2/1999 com.docker.VMID=4cc53242-9ff2-4507-a5de-64151f9b150e
+cgroup: 0::/   rootfs: overlay overlay
+
+== userns sysctls
+  /proc/sys/kernel/unprivileged_userns_clone                 (absent)
+  /proc/sys/user/max_user_namespaces                         31322
+  /proc/sys/user/max_mnt_namespaces                          31322
+  /proc/sys/user/max_pid_namespaces                          31322
+  /proc/sys/user/max_net_namespaces                          31322
+  /proc/sys/kernel/apparmor_restrict_unprivileged_userns     (absent)
+  /proc/sys/kernel/unprivileged_bpf_disabled                 0
+  /proc/sys/kernel/yama/ptrace_scope                         (absent)
+  /proc/sys/kernel/seccomp/actions_avail                     kill_process kill_thread trap errno user_notif trace log allow
+  LSM: (securityfs not mounted)  apparmor-profile: -
+
+== masked /proc mounts (these make a fresh procfs mount in a userns fail: mount_too_revealing)
+  proc /proc proc rw,nosuid,nodev,noexec,relatime
+  proc /proc/bus proc ro,nosuid,nodev,noexec,relatime
+  proc /proc/fs proc ro,nosuid,nodev,noexec,relatime
+  proc /proc/irq proc ro,nosuid,nodev,noexec,relatime
+  proc /proc/sys proc ro,nosuid,nodev,noexec,relatime
+  proc /proc/sysrq-trigger proc ro,nosuid,nodev,noexec,relatime
+  tmpfs /proc/interrupts tmpfs rw,nosuid,size=65536k,mode=755
+  tmpfs /proc/kcore tmpfs rw,nosuid,size=65536k,mode=755
+  tmpfs /proc/keys tmpfs rw,nosuid,size=65536k,mode=755
+  tmpfs /proc/timer_list tmpfs rw,nosuid,size=65536k,mode=755
+  tmpfs /proc/scsi tmpfs ro,relatime
+  cgroup: cgroup2fs  /dev/fuse: no
+
+== tools
+  unshare  /usr/bin/unshare 
+  setpriv  /usr/bin/setpriv 
+  nsenter  /usr/bin/nsenter 
+  bwrap    /usr/bin/bwrap 
+  nsjail   /usr/local/bin/nsjail 
+  capsh    /usr/sbin/capsh 
+  bwrap bubblewrap 0.8.0
+
+== namespace tests as root
+  unshare -U (userns)                    OK    
+  unshare -U -r (map root)               OK    0
+  unshare -m (mntns, needs SYS_ADMIN)    OK    
+  unshare -m + tmpfs mount               OK    mounted
+  unshare -p -f --mount-proc             OK    3
+  unshare -n (netns)                     OK    12
+  unshare -U -r -m -p -f --mount-proc    FAIL  rc=1 unshare: mount /proc failed: Operation not permitted
+  unshare -U -r -m tmpfs                 OK    mounted
+
+== namespace tests as uid 65534
+  setpriv drop uid (no ns)               OK    Uid: 65534 65534 65534 65534 CapEff: 0000000000000000 
+  uid: unshare -U -r                     OK    0
+  uid: unshare -U -r -m tmpfs            OK    mounted
+  uid: unshare -U -r -p -f mount-proc    FAIL  rc=1 unshare: mount /proc failed: Operation not permitted
+
+== bubblewrap
+  bwrap root, --unshare-all --proc       FAIL  rc=1 bwrap: Can't mount proc on /newroot/proc: Operation not permitted
+  bwrap root, --unshare-all no-proc      OK    0
+  bwrap uid, --unshare-all --proc        FAIL  rc=1 bwrap: Can't mount proc on /newroot/proc: Operation not permitted
+  bwrap uid, --unshare-all no-proc       OK    65534
+  bwrap uid, -user -mount only           OK    65534
+  bwrap uid, + --unshare-net             OK    65534
+  bwrap uid, + --unshare-pid --proc      FAIL  rc=1 bwrap: Can't mount proc on /newroot/proc: Operation not permitted
+
+== nsjail
+  nsjail root, userns (default)          FAIL  rc=255 mountPt():221 mount(''/proc' flags:MS_RDONLY type:'proc' options:'' dir:true') src:'none' dstpath:'/tmp/nsjail.0.root//proc' failed: Operation not permitted
+  nsjail root, userns, no proc           OK    65534
+  nsjail root, no userns                 FAIL  rc=255 ifaceUp():356 ioctl(iface='lo', SIOCSIFFLAGS, IFF_UP|IFF_RUNNING): Operation not permitted
+  nsjail root, no userns, share net      OK    65534
+  nsjail uid, userns, no proc            OK    65534
+  nsjail uid, userns                     FAIL  rc=255 mountPt():221 mount(''/proc' flags:MS_RDONLY type:'proc' options:'' dir:true') src:'none' dstpath:'/tmp/nsjail.65534.root//proc' failed: Operation not permitted
+  nsjail root, NO namespaces, seccomp    OK    Uid: 65534 65534 65534 65534 Seccomp_filters: 1 
+  nsjail root, userns, seccomp           FAIL  rc=255 mountPt():221 mount(''/proc' flags:MS_RDONLY type:'proc' options:'' dir:true') src:'none' dstpath:'/tmp/nsjail.0.root//proc' failed: Operation not permitted
+
+== landlock (unprivileged FS allowlist, no namespaces needed; kernel >= 5.13 + CONFIG_SECURITY_LANDLOCK + 'landlock' in lsm=)
+  config: # CONFIG_SECURITY_LANDLOCK is not set CONFIG_LSM="yama,loadpin,safesetid,integrity,bpf" 
+  setpriv has no --landlock-access (util-linux < 2.40; bookworm ships 2.38) -> test with a trixie image
+
+== workerd binary inside sandboxes (--version only; serving also needs /etc/ssl bound in for CA certs)
+  setpriv workerd                        OK    workerd 2026-10-14
+  bwrap uid workerd (no proc)            OK    workerd 2026-10-14
+  nsjail root workerd (no proc)          OK    workerd 2026-10-14

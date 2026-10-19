@@ -1,0 +1,10 @@
+[bwrap] host curl -> parent :8080 -> unix socket -> sandboxed t1: {"tenant":"t1","count":1} {"tenant":"t1","count":2}
+[bwrap] socket file seen from outside: srwxr-xr-x 1 t1 t1 0 Oct 16 00:43 /tenants/t1/run/http.sock
+[bwrap] sandbox -> parent tcp 127.0.0.1:8080: curl: (7) Failed to connect to 127.0.0.1 port 8080 after 0 ms: Couldn't connect to server
+[bwrap] sandbox -> internet: curl: (6) Could not resolve host: example.com
+[bwrap] host -> internet (control): 200
+[nsjail] host curl -> parent :8080 -> unix socket -> sandboxed t1: {"tenant":"t1","count":1} {"tenant":"t1","count":2}
+[nsjail] socket file seen from outside: srwxr-xr-x 1 t1 t1 0 Oct 16 00:43 /tenants/t1/run/http.sock
+[nsjail] sandbox -> parent tcp 127.0.0.1:8080: curl: (7) Failed to connect to 127.0.0.1 port 8080 after 0 ms: Couldn't connect to server
+[nsjail] sandbox -> internet: curl: (6) Could not resolve host: example.com
+[nsjail] host -> internet (control): 200
